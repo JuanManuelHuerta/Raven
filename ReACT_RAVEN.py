@@ -26,11 +26,15 @@ def extract_query(action_string: str) -> Optional[str]:
     if match:
         return match.group(1).strip()
     
-    match = re.search(r'Calculate\[(.*?)\]$', action_string)
+    match = re.search(r'Average\[(.*?)\]$', action_string)
     if match:
         return match.group(1).strip()
     
     match = re.search(r'Momentum\[(.*?)\]$', action_string)
+    if match:
+        return match.group(1).strip()
+    
+    match = re.search(r'Ratio\[(.*?)\]$', action_string)
     if match:
         return match.group(1).strip()
     
@@ -50,9 +54,9 @@ def instrument_lookup(ticker_symbol, max_results: int = 10) -> list:
         return f"Search error: {str(e)}"
 
 
-def compute_statistics(calculation_string:str) -> str:
+def average(calculation_string:str) -> str:
     """
-    Computes basic time series statistics. Currently just the mean.
+    Computes basic time series average.
     """
     #print(f"CALCULATE {calculation_string}")
     match = re.search(r'([A-Z]+)\,\s*\[(.*?)\]$', calculation_string)
@@ -80,6 +84,24 @@ def momentum(calculation_string:str) -> str:
         return f"The momentum of {cs1} is {momentum}"
     return f"The momentum of {cs1} is 0.0"
 
+def ratio(calculation_string:str) -> str:
+    """
+    Computes  ratio. Takes ticker name,  value1, ticker name 2, value 2 and returns the ratio of the two values.
+    """
+    match = re.search(r'([A-Z]+)\,\s*([\-0-9\.]+)\,\s*([A-Z]+)\,\s*([\-0-9\.]+).*?$', calculation_string)
+    if match:
+        try:
+            t1= match.group(1).strip()
+            v1=float(match.group(2).strip())
+            t2= match.group(3).strip()
+            v2=float(match.group(4).strip())
+            ratio=v1/v2
+            print(f"Im here!!!{ratio}")
+            return f"The ratio of {t1} to {t2} is {ratio}"
+        except:
+            return f"The ratio of {t1} to {t2}  is 0.0"
+
+
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
@@ -101,12 +123,16 @@ def execute_action(action_string):
         query = extract_query(action_string)
         print("EXTRACTED TICKER",query)
         return instrument_lookup(query)
-    if action_string.startswith("Calculate["):
+    if action_string.startswith("Average["):
         query = extract_query(action_string)
-        return compute_statistics(query)
+        return average(query)
     if action_string.startswith("Momentum["):
         query = extract_query(action_string)
         return momentum(query)
+    if action_string.startswith("Ratio["):
+        query = extract_query(action_string)
+        return ratio(query)
+
 
     return "Nothing"
 # -----------------------------------------------------------------------------
@@ -125,7 +151,7 @@ def react_agent(question: str, *, max_steps: int = 10) -> str:
     ## BEGIN SOLUTION
     client = OpenAI()
     content = ""
-    n_steps=10
+    n_steps=max_steps
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": question}  # Add the initial question
@@ -133,45 +159,49 @@ def react_agent(question: str, *, max_steps: int = 10) -> str:
     print("Starting Agent with Messages:", messages)
     
     for step in range(n_steps):
+
         response = client.chat.completions.create(
          model=MODEL_NAME,
          messages=messages,
+         temperature=0.0,
          response_format={"type": "json_object"} 
          )
-        #          temperature=0.0,
 
         #content = next_iter_input
         content=response.choices[0].message.content
-
-        if "Answer" in content:
-            print("ANSWER FOUND!!", content)
-            return(json.loads(content)['Answer'])
-            
-        
-        #print("Contnet", content)
-        action = extract_action(content)  # e.g., "Search[Paris population]"
+        action = extract_action(content)  
         print("Action", action)
+        
+        if "Answer" in content:
+            #print("ANSWER FOUND!!", content)
+            return(json.loads(content)['Answer'])
+        elif action is None:
+            print(f"REACHED A None Action. Content follows \n{content}")
+            return(json.loads(content))
+            
         observation = execute_action(action)
+        print(f"observation {observation} step {step}")
         
         # Add to conversation history
         messages.append({"role": "assistant", "content": content})
         messages.append({"role": "user", "content": f"Observation: {observation}"})
 
 
-        print ("Completed Iteration:",messages)
-        user_input = input("Please HIT enter ")
+        #print ("Completed Iteration:",messages)
+        #user_input = input("Please HIT enter ")
         
    
 
 def main() -> None:
-    """Tiny demo to illustrate usage."""
+    """RAVEN Examples."""
     #q = "What is the average closing price of AMZN at the close of market in the last week?"
     #q = "Which of the magnificent 7 stocks has shown a higher mean in the closing price of their stock last week?"
     #q = "Which of these companies: Apple, Amazon or Microsoft has shown a higher mean in the closing price of their stock last week?"
-    q = "Which of these two companies: Apple and  Amazon has higher momentum in their closing prices in the last 7 days?"
-    #q = "Is Ethereum price correlated with Bitcoin price?" 
+    #q = "Which of these two companies: Apple and  Amazon has higher momentum in their closing prices in the last 7 days?"
+    #q = "Which of these two companies: Apple and Amazon has a higher ratio of momentum to average closing price in the last 7 days?"
+    q = "Find the company in the 3 top hyperscalars that has the highest ratio of momentum to average in the last 7 days and the one with the lowest."
     print("Question:", q)
-    print("Answer:", react_agent(q))
+    print("Answer:", react_agent(q,max_steps=30))
 
 
 if __name__ == "__main__":
