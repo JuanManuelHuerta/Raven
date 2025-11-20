@@ -4,8 +4,6 @@ import os
 import re
 from typing import List
 
-import requests
-import openai
 from openai import OpenAI
 from typing import Optional
 
@@ -19,11 +17,11 @@ import ast
 def extract_query(action_string: str) -> Optional[str]:
     """
     Extract query from action strings like:
-    - "Search[Paris population]"
-    - "Search[capital of France]"
-    
+    - "Lookup[AAPL]" --> "AAPL"
+    - "Calculate[[1.0,2.0,3.0]]]"--> "[1.0,2.0,3.0]"
     Returns the text inside brackets, or None if not found.
     """
+
     match = re.search(r'Lookup\[(.*?)\]$', action_string)
     if match:
         return match.group(1).strip()
@@ -32,11 +30,15 @@ def extract_query(action_string: str) -> Optional[str]:
     if match:
         return match.group(1).strip()
     
+    match = re.search(r'Momentum\[(.*?)\]$', action_string)
+    if match:
+        return match.group(1).strip()
+    
+
     return None
 
 
-
-# Option 1: Using DuckDuckGo (free, no API key needed)
+# Instrument Lookup using Yahoo finance. Provide Ticker Symbol.
 def instrument_lookup(ticker_symbol, max_results: int = 10) -> list:
     """
     Use Yahoo Finance to look for instruments price histories.
@@ -48,9 +50,12 @@ def instrument_lookup(ticker_symbol, max_results: int = 10) -> list:
         return f"Search error: {str(e)}"
 
 
-def computation(calculation_string:str) -> str:
+def compute_statistics(calculation_string:str) -> str:
+    """
+    Computes basic time series statistics. Currently just the mean.
+    """
     #print(f"CALCULATE {calculation_string}")
-    match = re.search(r'([A-Z]+)\, \[(.*?)\]$', calculation_string)
+    match = re.search(r'([A-Z]+)\,\s*\[(.*?)\]$', calculation_string)
     if match:
         cs1= match.group(1).strip()
         cs2="["+ match.group(2).strip()+"]"
@@ -59,10 +64,27 @@ def computation(calculation_string:str) -> str:
         return f"The average price of {cs1} is {average}"
     return "The average price is 0.0"
 
+
+def momentum(calculation_string:str) -> str:
+    """
+    Computes basic momentum. Takes a time series of prices as input.
+    """
+    epsilon=0.9
+    #print(f"MOMENTUM {calculation_string}")
+    match = re.search(r'([A-Z]+)\,\s*\[(.*?)\]$', calculation_string)
+    if match:
+        cs1= match.group(1).strip()
+        cs2="["+ match.group(2).strip()+"]"
+        prices = ast.literal_eval(cs2)
+        momentum = prices[-1]+ epsilon*(prices[-1]-prices[0])
+        return f"The momentum of {cs1} is {momentum}"
+    return f"The momentum of {cs1} is 0.0"
+
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
 MODEL_NAME = "gpt-4o"
+#MODEL_NAME = "gpt-5-nano"
 MAX_TOKENS = 1024
 
 def extract_action(text):
@@ -81,7 +103,10 @@ def execute_action(action_string):
         return instrument_lookup(query)
     if action_string.startswith("Calculate["):
         query = extract_query(action_string)
-        return computation(query)
+        return compute_statistics(query)
+    if action_string.startswith("Momentum["):
+        query = extract_query(action_string)
+        return momentum(query)
 
     return "Nothing"
 # -----------------------------------------------------------------------------
@@ -99,15 +124,6 @@ def is_total_complete(in_text: str) -> bool:
 def react_agent(question: str, *, max_steps: int = 10) -> str:
     ## BEGIN SOLUTION
     client = OpenAI()
-
-    # Example API usage:
-    # response = client.chat.completions.create(
-    #     model=MODEL_NAME,
-    #     messages=messages,
-    #     temperature=0.0,
-    #     response_format={"type": "json_object"}
-    # )
-    # content = response.choices[0].message.content
     content = ""
     n_steps=10
     messages = [
@@ -120,10 +136,10 @@ def react_agent(question: str, *, max_steps: int = 10) -> str:
         response = client.chat.completions.create(
          model=MODEL_NAME,
          messages=messages,
-         temperature=0.0,
          response_format={"type": "json_object"} 
          )
-        
+        #          temperature=0.0,
+
         #content = next_iter_input
         content=response.choices[0].message.content
 
@@ -132,7 +148,7 @@ def react_agent(question: str, *, max_steps: int = 10) -> str:
             return(json.loads(content)['Answer'])
             
         
-        print("Contnet", content)
+        #print("Contnet", content)
         action = extract_action(content)  # e.g., "Search[Paris population]"
         print("Action", action)
         observation = execute_action(action)
@@ -145,19 +161,15 @@ def react_agent(question: str, *, max_steps: int = 10) -> str:
         print ("Completed Iteration:",messages)
         user_input = input("Please HIT enter ")
         
-    ## END SOLUTION
-
-# -----------------------------------------------------------------------------
-# 3. Demo – run:  python web_nav_agent.py
-# -----------------------------------------------------------------------------
+   
 
 def main() -> None:
     """Tiny demo to illustrate usage."""
     #q = "What is the average closing price of AMZN at the close of market in the last week?"
     #q = "Which of the magnificent 7 stocks has shown a higher mean in the closing price of their stock last week?"
-    q = "Which of these companies: Apple, Amazon or Microsoft has shown a higher mean in the closing price of their stock last week?"
+    #q = "Which of these companies: Apple, Amazon or Microsoft has shown a higher mean in the closing price of their stock last week?"
+    q = "Which of these two companies: Apple and  Amazon has higher momentum in their closing prices in the last 7 days?"
     #q = "Is Ethereum price correlated with Bitcoin price?" 
-    # q = "What papers did Nicholas Tomlin write in 2024 according to his academic website?"
     print("Question:", q)
     print("Answer:", react_agent(q))
 
