@@ -3,13 +3,14 @@ import json
 import os
 import re
 from typing import List
-
+from statistics import variance
 from openai import OpenAI
 from typing import Optional
 
 import yfinance as yf
 import pandas as pd
 import ast
+import numpy as np
 
 # -----------------------------------------------------------------------------
 # Extract query from Action string
@@ -35,6 +36,14 @@ def extract_query(action_string: str) -> Optional[str]:
         return match.group(1).strip()
     
     match = re.search(r'Ratio\[(.*?)\]$', action_string)
+    if match:
+        return match.group(1).strip()
+    
+    match = re.search(r'Volatility\[(.*?)\]$', action_string)
+    if match:
+        return match.group(1).strip()
+    
+    match = re.search(r'TimeDifference\[(.*?)\]$', action_string)
     if match:
         return match.group(1).strip()
     
@@ -69,6 +78,21 @@ def average(calculation_string:str) -> str:
     return "The average price is 0.0"
 
 
+def volatility(calculation_string:str) -> str:
+    """
+    Computes basic time series volatility.
+    """
+    #print(f"CALCULATE {calculation_string}")
+    match = re.search(r'([A-Z]+)\,\s*\[(.*?)\]$', calculation_string)
+    if match:
+        cs1= match.group(1).strip()
+        cs2="["+ match.group(2).strip()+"]"
+        prices = ast.literal_eval(cs2)
+        volatility = variance(prices) 
+        return f"The average volatility of {cs1} is {volatility}"
+    return f"The average volatility of {cs1} is 0.0"
+
+
 def momentum(calculation_string:str) -> str:
     """
     Computes basic momentum. Takes a time series of prices as input.
@@ -83,6 +107,26 @@ def momentum(calculation_string:str) -> str:
         momentum = prices[-1]+ epsilon*(prices[-1]-prices[0])
         return f"The momentum of {cs1} is {momentum}"
     return f"The momentum of {cs1} is 0.0"
+
+
+
+def time_difference(calculation_string:str) -> str:
+    """
+    Computes time differences. Takes a time series and finds time differences.
+    """
+    epsilon=0.9
+    match = re.search(r'([A-Z]+)\,\s*\[(.*?)\]$', calculation_string)
+    if match:
+        cs1= match.group(1).strip()
+        cs2="["+match.group(2).strip()+"]"
+        print(f"CS2!!!! {cs2}")
+    
+        td = np.diff(np.array(ast.literal_eval(cs2)).flatten()).tolist()
+    
+        return f"The time difference of {cs1} is {td}"
+    return f"The momentum of {cs1} is 0.0"
+
+
 
 def ratio(calculation_string:str) -> str:
     """
@@ -132,7 +176,12 @@ def execute_action(action_string):
     if action_string.startswith("Ratio["):
         query = extract_query(action_string)
         return ratio(query)
-
+    if action_string.startswith("Volatility["):
+        query = extract_query(action_string)
+        return volatility(query)
+    if action_string.startswith("TimeDifference["):
+        query = extract_query(action_string)
+        return time_difference(query)
 
     return "Nothing"
 # -----------------------------------------------------------------------------
@@ -199,7 +248,10 @@ def main() -> None:
     #q = "Which of these companies: Apple, Amazon or Microsoft has shown a higher mean in the closing price of their stock last week?"
     #q = "Which of these two companies: Apple and  Amazon has higher momentum in their closing prices in the last 7 days?"
     #q = "Which of these two companies: Apple and Amazon has a higher ratio of momentum to average closing price in the last 7 days?"
-    q = "Find the company in the 3 top hyperscalars that has the highest ratio of momentum to average in the last 7 days and the one with the lowest."
+    #q = "Find the company in the 3 top hyperscalars that has the highest ratio of momentum to average in the last 7 days and the one with the lowest."
+    #q = "Find the company in the 3 top hyperscalars that has the highest ratio of momentum to volatility in the last 7 days and the one with the lowest."
+    #q = "Find the company in the 3 top hyperscalars that has the highest momentum of the time difference in its closing prices in the last 7 days and the one with the lowest."
+    q = "Is Nvidia mean of the time difference of the closing day prices for the last 5 days higher than Oracle?"
     print("Question:", q)
     print("Answer:", react_agent(q,max_steps=30))
 
