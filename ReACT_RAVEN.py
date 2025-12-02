@@ -12,6 +12,19 @@ import pandas as pd
 import ast
 import numpy as np
 
+
+class FinancialWorld:
+    def __init__(self,input_span):
+        self.span=input_span
+
+    @property
+    def span(self):
+        return self._span
+    
+    @span.setter
+    def span(self,input_span):
+        self._span=input_span
+
 # -----------------------------------------------------------------------------
 # Extract query from Action string
 # -----------------------------------------------------------------------------
@@ -52,12 +65,18 @@ def extract_query(action_string: str) -> Optional[str]:
 
 
 # Instrument Lookup using Yahoo finance. Provide Ticker Symbol.
-def instrument_lookup(ticker_symbol, max_results: int = 10) -> list:
+def instrument_lookup(ticker_symbol, max_results ,context ) -> list:
     """
     Use Yahoo Finance to look for instruments price histories.
     """
     try:
-        results = yf.download(ticker_symbol, period="5d")['Close'].values
+        #print(f"LOOKING UP<<<< {context.span}")
+        if context is not None:
+            span=str(context.span)+"d"
+        else:
+            span="5d"
+
+        results = yf.download(ticker_symbol, period=span)['Close'].values
         return results
     except Exception as e:
         return f"Search error: {str(e)}"
@@ -162,11 +181,11 @@ def extract_answer(content):
     # Parse "Answer: ..." format
     return content['Answer']
 
-def execute_action(action_string):
+def execute_action(action_string,my_context):
     if action_string.startswith("Lookup["):
         query = extract_query(action_string)
         print("EXTRACTED TICKER",query)
-        return instrument_lookup(query)
+        return instrument_lookup(query,10,my_context)
     if action_string.startswith("Average["):
         query = extract_query(action_string)
         return average(query)
@@ -196,7 +215,7 @@ def is_total_complete(in_text: str) -> bool:
         return True
     return False
 
-def react_agent(question: str, *, max_steps: int = 10) -> str:
+def react_agent(question: str, max_steps , my_context) -> str:
     ## BEGIN SOLUTION
     client = OpenAI()
     content = ""
@@ -228,7 +247,7 @@ def react_agent(question: str, *, max_steps: int = 10) -> str:
             print(f"REACHED A None Action. Content follows \n{content}")
             return(json.loads(content))
             
-        observation = execute_action(action)
+        observation = execute_action(action,my_context)
         print(f"observation {observation} step {step}")
         
         # Add to conversation history
@@ -243,6 +262,7 @@ def react_agent(question: str, *, max_steps: int = 10) -> str:
 
 def main() -> None:
     """RAVEN Examples."""
+    my_context=FinancialWorld(10)
     #q = "What is the average closing price of AMZN at the close of market in the last week?"
     #q = "Which of the magnificent 7 stocks has shown a higher mean in the closing price of their stock last week?"
     #q = "Which of these companies: Apple, Amazon or Microsoft has shown a higher mean in the closing price of their stock last week?"
@@ -251,9 +271,9 @@ def main() -> None:
     #q = "Find the company in the 3 top hyperscalars that has the highest ratio of momentum to average in the last 7 days and the one with the lowest."
     #q = "Find the company in the 3 top hyperscalars that has the highest ratio of momentum to volatility in the last 7 days and the one with the lowest."
     #q = "Find the company in the 3 top hyperscalars that has the highest momentum of the time difference in its closing prices in the last 7 days and the one with the lowest."
-    q = "Is Nvidia mean of the time difference of the closing day prices for the last 5 days higher than Oracle?"
+    q = "Is Nvidia mean of the time difference of the closing day prices for the last 10 days higher than Oracle?"
     print("Question:", q)
-    print("Answer:", react_agent(q,max_steps=30))
+    print("Answer:", react_agent(q,30,my_context))
 
 
 if __name__ == "__main__":
