@@ -14,16 +14,26 @@ import numpy as np
 
 
 class FinancialWorld:
-    def __init__(self,input_span):
+    def __init__(self,input_span,ticker_set=None):
         self.span=input_span
+        self.ticker_set=ticker_set
 
     @property
     def span(self):
         return self._span
     
+    @property
+    def ticker_set(self):
+        return self._ticker_set
+    
     @span.setter
     def span(self,input_span):
         self._span=input_span
+
+    @ticker_set.setter
+    def ticker_set(self,ticker_set):
+        self._ticker_set=ticker_set
+
 
 # -----------------------------------------------------------------------------
 # Extract query from Action string
