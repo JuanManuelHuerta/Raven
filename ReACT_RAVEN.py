@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import json
 import os
 import re
@@ -13,9 +14,15 @@ import ast
 import numpy as np
 
 
+# -----------------------------------------------------------------------------
+# This class definess the Space Object (Financial World)for this instance:
+# -----------------------------------------------------------------------------
+
+
 class FinancialWorld:
     def __init__(self,input_span,ticker_set=None):
-        self.span=input_span
+        #self.span=input_span
+        self.span=None
         self.ticker_set=ticker_set
 
     @property
@@ -34,10 +41,15 @@ class FinancialWorld:
     def ticker_set(self,ticker_set):
         self._ticker_set=ticker_set
 
+    def ping(self):
+        ss_dict = {'span':self._span, 'ticker_set':self._ticker_set}
+        return str(ss_dict)    
+
 
 # -----------------------------------------------------------------------------
-# Extract query from Action string
+# Extract query from Action string: This function comprises the Action Space
 # -----------------------------------------------------------------------------
+
 def extract_query(action_string: str) -> Optional[str]:
     """
     Extract query from action strings like:
@@ -46,6 +58,7 @@ def extract_query(action_string: str) -> Optional[str]:
     Returns the text inside brackets, or None if not found.
     """
 
+    
     match = re.search(r'Lookup\[(.*?)\]$', action_string)
     if match:
         return match.group(1).strip()
@@ -70,8 +83,24 @@ def extract_query(action_string: str) -> Optional[str]:
     if match:
         return match.group(1).strip()
     
-
     return None
+
+
+
+# Ping the State Space Object
+def PingStateSpace(context ) -> dict:
+    """
+    Get the State Space baack as an dict.
+    """
+    try:
+        if context is not None:
+            state_space=str(context.ping())
+        else:
+            state_space="State Space does not exist!"
+        return state_space
+    except Exception as e:
+        return f"StateSpace error: {str(e)}"
+
 
 
 # Instrument Lookup using Yahoo finance. Provide Ticker Symbol.
@@ -192,6 +221,12 @@ def extract_answer(content):
     return content['Answer']
 
 def execute_action(action_string,my_context):
+
+    if action_string.startswith("PingStateSpace["):
+        #query = extract_query(action_string)
+        #print("EXTRACTED TICKER",query)
+        return PingStateSpace(my_context)
+    
     if action_string.startswith("Lookup["):
         query = extract_query(action_string)
         print("EXTRACTED TICKER",query)
@@ -281,7 +316,10 @@ def main() -> None:
     #q = "Find the company in the 3 top hyperscalars that has the highest ratio of momentum to average in the last 7 days and the one with the lowest."
     #q = "Find the company in the 3 top hyperscalars that has the highest ratio of momentum to volatility in the last 7 days and the one with the lowest."
     #q = "Find the company in the 3 top hyperscalars that has the highest momentum of the time difference in its closing prices in the last 7 days and the one with the lowest."
-    q = "Is Nvidia mean of the time difference of the closing day prices for the last 10 days higher than Oracle?"
+  
+    #q = "Is Nvidia mean of the time difference of the closing day prices for the last 10 days higher than Oracle?"
+    q = "Is Nvidia mean of the time difference of the closing day prices higher than Oracle?"
+  
     print("Question:", q)
     print("Answer:", react_agent(q,30,my_context))
 
