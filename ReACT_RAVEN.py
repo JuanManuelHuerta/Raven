@@ -22,7 +22,7 @@ import numpy as np
 class FinancialWorld:
     def __init__(self,input_span,ticker_set=None):
         #self.span=input_span
-        self.span=None
+        self.span="10d"
         self.ticker_set=ticker_set
 
     @property
@@ -41,7 +41,7 @@ class FinancialWorld:
     def ticker_set(self,ticker_set):
         self._ticker_set=ticker_set
 
-    def ping(self):
+    def peek(self):
         ss_dict = {'span':self._span, 'ticker_set':self._ticker_set}
         return str(ss_dict)    
 
@@ -51,6 +51,7 @@ class FinancialWorld:
 # -----------------------------------------------------------------------------
 
 def extract_query(action_string: str) -> Optional[str]:
+ 
     """
     Extract query from action strings like:
     - "Lookup[AAPL]" --> "AAPL"
@@ -58,7 +59,18 @@ def extract_query(action_string: str) -> Optional[str]:
     Returns the text inside brackets, or None if not found.
     """
 
+    match = re.search(r'PeekStateSpace\[(.*?)\]$', action_string)
+    if match:
+        return match.group(1).strip()
     
+    match = re.search(r'PromptUser\[(.*?)\]$', action_string)
+    if match:
+        return match.group(1).strip()
+    
+    match = re.search(r'SetStateSpace\[(.*?)\]$', action_string)
+    if match:
+        return match.group(1).strip()
+
     match = re.search(r'Lookup\[(.*?)\]$', action_string)
     if match:
         return match.group(1).strip()
@@ -87,20 +99,33 @@ def extract_query(action_string: str) -> Optional[str]:
 
 
 
-# Ping the State Space Object
-def PingStateSpace(context ) -> dict:
+# Peek the State Space Object
+def peekStateSpace(context ) -> dict:
     """
     Get the State Space baack as an dict.
     """
     try:
         if context is not None:
-            state_space=str(context.ping())
+            state_space=str(context.peek())
         else:
             state_space="State Space does not exist!"
         return state_space
     except Exception as e:
         return f"StateSpace error: {str(e)}"
 
+# Prompt User
+def promptUser(prompt ) -> str:
+    """
+    General prompt user.
+    """
+    try:
+        if prompt is not None:
+            user_response=input(prompt)
+        else:
+            user_response="No prompt/No input."
+        return user_response
+    except Exception as e:
+        return f"Prompt error: {str(e)}"
 
 
 # Instrument Lookup using Yahoo finance. Provide Ticker Symbol.
@@ -110,12 +135,16 @@ def instrument_lookup(ticker_symbol, max_results ,context ) -> list:
     """
     try:
         #print(f"LOOKING UP<<<< {context.span}")
+        cleaned_string = ticker_symbol.replace("'", "").replace('"', "")
         if context is not None:
             span=str(context.span)+"d"
+            if span not in set(["1d","5d","1mo","3mo","6mo"]):
+                span="10d"
+
         else:
             span="5d"
 
-        results = yf.download(ticker_symbol, period=span)['Close'].values
+        results = yf.download(cleaned_string, period=span)['Close'].values
         return results
     except Exception as e:
         return f"Search error: {str(e)}"
@@ -141,7 +170,7 @@ def volatility(calculation_string:str) -> str:
     Computes basic time series volatility.
     """
     #print(f"CALCULATE {calculation_string}")
-    match = re.search(r'([A-Z]+)\,\s*\[(.*?)\]$', calculation_string)
+    match = re.search(r'([\'\"A-Z]+)\,\s*\[(.*?)\]$', calculation_string)
     if match:
         cs1= match.group(1).strip()
         cs2="["+ match.group(2).strip()+"]"
@@ -157,10 +186,10 @@ def momentum(calculation_string:str) -> str:
     """
     epsilon=0.9
     #print(f"MOMENTUM {calculation_string}")
-    match = re.search(r'([A-Z]+)\,\s*\[(.*?)\]$', calculation_string)
+    match = re.search(r'([\'\"A-Z]+)\,\s*\[(.*?)\]$', calculation_string)
     if match:
         cs1= match.group(1).strip()
-        cs2="["+ match.group(2).strip()+"]"
+        cs2="["+ match.group(2).strip().replace("[","").replace("]","")+"]"
         prices = ast.literal_eval(cs2)
         momentum = prices[-1]+ epsilon*(prices[-1]-prices[0])
         return f"The momentum of {cs1} is {momentum}"
@@ -222,11 +251,14 @@ def extract_answer(content):
 
 def execute_action(action_string,my_context):
 
-    if action_string.startswith("PingStateSpace["):
+    if action_string.startswith("PeekStateSpace["):
         #query = extract_query(action_string)
         #print("EXTRACTED TICKER",query)
-        return PingStateSpace(my_context)
+        return peekStateSpace(my_context)
     
+    if action_string.startswith("PromptUser"):
+        return promptUser(my_context)
+
     if action_string.startswith("Lookup["):
         query = extract_query(action_string)
         print("EXTRACTED TICKER",query)
@@ -318,7 +350,7 @@ def main() -> None:
     #q = "Find the company in the 3 top hyperscalars that has the highest momentum of the time difference in its closing prices in the last 7 days and the one with the lowest."
   
     #q = "Is Nvidia mean of the time difference of the closing day prices for the last 10 days higher than Oracle?"
-    q = "Is Nvidia mean of the time difference of the closing day prices higher than Oracle?"
+    q = "Let's do some analysis."
   
     print("Question:", q)
     print("Answer:", react_agent(q,30,my_context))
