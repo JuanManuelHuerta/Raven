@@ -15,7 +15,20 @@ State of the world is kept and managed in a domain specific Object. Currently co
 
 Next to do: Make it Mixed Initiative so that it can prompt user for inputs and wait.
 
-**Asynchronous Agents**
+## Evaluation Tasks
+
+Here are some notes on the 2 key applications:
+
+1. Financial Analyst: Pulls data, runs exploratory data analysis, provides insights,  builds a hypothesis, backtests the hypothesis.
+
+2. Timed Chess: Gets the move from oponent, thinks and makes a move. Thinks while the oponent is thinking.
+    https://github.com/LeelaChessZero/lc0/wiki/Getting-Started
+
+
+
+
+
+## About Asynchronous Agents
 
 There are several frameworks specifically designed for asynchronous collaboration of AI agents. Here are the main ones:
 Top Frameworks for Asynchronous Agent Collaboration
