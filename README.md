@@ -1,4 +1,4 @@
-# Raven: ReACT with Asynchronous Validators, Experts and iNputs
+# Raven: Reason and Act with Validators, Experts and iNputs
 
 This is an implementation of the RAVEN approach. As reference application, this code implements a Finance analysis engine that can carry out complex analytic tasks.
 
