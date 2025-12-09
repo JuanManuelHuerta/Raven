@@ -6,6 +6,7 @@ import os
 import numpy as np
 import lmstudio as lms
 
+PLAY_HUMAN=True
 
 def chess_agent(a: list) -> str:
     """Given a list of legal moves returns one."""
@@ -19,9 +20,17 @@ def raven_chess(model,legal_moves_list) -> list:
                         on_message=print,
                         )
     next_move_2="test"
+    print("OBJECT",dir(model._session))
+    '''
+    for message in response.history:
+        if message["role"] == "assistant":
+            print(f"Assistant's response from history: {message['content']}")
+        elif message["role"] == "tool_result":
+            print(f"Tool result from history: {message['content']}")
+    '''
 
     ## TODO: still need to handle correctly the action output of the model
-    print("RESPONSE", response)
+    #print("RESPONSE", assistant_reponse)
     return next_move_2
 
 def play_timed_chess_match(engine_path, model,  time_per_player_seconds=300):
@@ -57,13 +66,16 @@ def play_timed_chess_match(engine_path, model,  time_per_player_seconds=300):
                     legal_moves_list = [move.uci() for move in legal_moves_iterator]
 
                     print("Legal moves:",legal_moves_list)
-                    next_move=random.choice(legal_moves_list)
-                    #move_input = input("RaVEN move: ")
-                    print("RaVEN Thinking")
-                    next_move_2=raven_chess(model,legal_moves_list)
-                    print(f"RaVEN Move: {next_move} {next_move_2}")
+                    if PLAY_HUMAN is True:
+                        next_move=random.choice(legal_moves_list)
+                        next_move_2 = input("RaVEN move: ")
+                    else:
+                        print("RaVEN Thinking")
+                        next_move_2=raven_chess(model,legal_moves_list)
+    
+                    print(f"RaVEN Move: {next_move_2}")
                     
-                    move = board.parse_san(next_move)
+                    move = board.parse_san(next_move_2)
                     if move in board.legal_moves:
                         board.push(move)
                         break
