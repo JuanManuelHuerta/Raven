@@ -5,8 +5,18 @@ import random
 import os
 import numpy as np
 import lmstudio as lms
+from openai import OpenAI
+from typing import Optional
 
-PLAY_HUMAN=True
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+MODEL_NAME = "gpt-4o"
+#MODEL_NAME = "gpt-5-nano"
+MAX_TOKENS = 1024
+PLAY_HUMAN=False
+SYSTEM_PROMPT = "You are an algorithmic chess player. You provide answers in JSON format.  You will receive updates of the game and will follow algorithmic instructions. Good luck."
+
 
 def chess_agent(a: list) -> str:
     """Given a list of legal moves returns one."""
@@ -41,9 +51,16 @@ def play_timed_chess_match(engine_path, model,  time_per_player_seconds=300):
         engine_path (str): The path to the UCI-compatible chess engine executable.
         time_per_player_seconds (int): The initial time in seconds for each player.
     """
-
+    question = "Pick a move at random. I will keep updating the options. Just pick one."
     board = chess.Board()
     engine = chess.engine.SimpleEngine.popen_uci("/opt/homebrew/bin/stockfish")
+    client = OpenAI()
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": question}  # Add the initial question
+        ]   
+    print("Starting Agent with Messages:", messages)
+  
 
     raven_time_left = time_per_player_seconds
     engine_time_left = time_per_player_seconds
@@ -64,16 +81,31 @@ def play_timed_chess_match(engine_path, model,  time_per_player_seconds=300):
                 try:
                     legal_moves_iterator = board.legal_moves
                     legal_moves_list = [move.uci() for move in legal_moves_iterator]
+                    info = engine.analyse(board, chess.engine.Limit(depth=20))
+                    print("INFO!!!",info['score'])
 
                     print("Legal moves:",legal_moves_list)
-                    if PLAY_HUMAN is True:
-                        next_move=random.choice(legal_moves_list)
-                        next_move_2 = input("RaVEN move: ")
+                    if PLAY_HUMAN == True:
+                        next_move_2 = input("Human RaVEN move: ")
                     else:
                         print("RaVEN Thinking")
-                        next_move_2=raven_chess(model,legal_moves_list)
-    
-                    print(f"RaVEN Move: {next_move_2}")
+                        #next_move_2=raven_chess(model,legal_moves_list)    
+                        messages.append({"role": "user", "content": str(legal_moves_list)})
+                        print("MESSAGES",messages)
+                        response = client.chat.completions.create(
+                            model=MODEL_NAME,
+                            messages=messages,
+                            temperature=0.0,
+                            response_format={"type": "json_object"} 
+                            )
+
+                        #content = next_iter_input
+                        content=eval(response.choices[0].message.content)
+                        print("RESPONESE:",content)
+                        #next_move_2=random.choice(legal_moves_list).replace("'","").replace("\"","")
+                        next_move_2=content["move"].replace("'","").replace("\"","")
+
+                        print(f"RaVEN Move: {next_move_2}")
                     
                     move = board.parse_san(next_move_2)
                     if move in board.legal_moves:
