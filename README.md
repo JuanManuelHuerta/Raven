@@ -1,4 +1,4 @@
-# Raven: Reasoning Architecture with Validators, Experts and iNputs
+# Raven: Reasoning Agents via Explanatory laNdmarks
 
 This is an implementation of the RAVEN approach. As reference application, this code implements a Finance analysis engine that can carry out complex analytic tasks.
 

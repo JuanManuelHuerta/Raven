@@ -5,8 +5,15 @@ import random
 import os
 import numpy as np
 import lmstudio as lms
+
 from openai import OpenAI
 from typing import Optional
+
+from pydantic import BaseModel
+
+# A class based schema for a book
+class MoveSchema(BaseModel):
+    move: str
 
 # -----------------------------------------------------------------------------
 # Configuration
@@ -15,6 +22,7 @@ MODEL_NAME = "gpt-4o"
 #MODEL_NAME = "gpt-5-nano"
 MAX_TOKENS = 1024
 PLAY_HUMAN=False
+USE_LOCAL_LLM=True
 SYSTEM_PROMPT = "You are an algorithmic chess player. You provide answers in JSON format.  You will receive updates of the game and will follow algorithmic instructions. Good luck."
 
 
@@ -43,7 +51,7 @@ def raven_chess(model,legal_moves_list) -> list:
     #print("RESPONSE", assistant_reponse)
     return next_move_2
 
-def play_timed_chess_match(engine_path, model,  time_per_player_seconds=300):
+def play_timed_chess_match(engine_path, time_per_player_seconds=300):
     """
     Plays a timed chess match between a RaVEN Agent and a UCI-compatible chess engine.
 
@@ -54,12 +62,16 @@ def play_timed_chess_match(engine_path, model,  time_per_player_seconds=300):
     question = "Pick a move at random. I will keep updating the options. Just pick one."
     board = chess.Board()
     engine = chess.engine.SimpleEngine.popen_uci("/opt/homebrew/bin/stockfish")
-    client = OpenAI()
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": question}  # Add the initial question
-        ]   
-    print("Starting Agent with Messages:", messages)
+
+    if USE_LOCAL_LLM is False:
+        client = OpenAI()
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": question}  # Add the initial question
+            ]   
+        print("Starting OpenAI Agent with Messages:", messages)
+    else:
+        model = lms.llm("gemma-3-12b-it-qat")
   
 
     raven_time_left = time_per_player_seconds
@@ -90,20 +102,26 @@ def play_timed_chess_match(engine_path, model,  time_per_player_seconds=300):
                     else:
                         print("RaVEN Thinking")
                         #next_move_2=raven_chess(model,legal_moves_list)    
-                        messages.append({"role": "user", "content": str(legal_moves_list)})
-                        print("MESSAGES",messages)
-                        response = client.chat.completions.create(
-                            model=MODEL_NAME,
-                            messages=messages,
-                            temperature=0.0,
-                            response_format={"type": "json_object"} 
-                            )
+                        if USE_LOCAL_LLM is False:
 
-                        #content = next_iter_input
-                        content=eval(response.choices[0].message.content)
-                        print("RESPONESE:",content)
-                        #next_move_2=random.choice(legal_moves_list).replace("'","").replace("\"","")
-                        next_move_2=content["move"].replace("'","").replace("\"","")
+                            messages.append({"role": "user", "content": str(legal_moves_list)})
+                            print("MESSAGES",messages)
+                            response = client.chat.completions.create(
+                                model=MODEL_NAME,
+                                messages=messages,
+                                temperature=0.0,
+                                response_format={"type": "json_object"} 
+                                )
+
+                            #content = next_iter_input
+                            content=eval(response.choices[0].message.content)
+                            print("RESPONESE:",content)
+                            #next_move_2=random.choice(legal_moves_list).replace("'","").replace("\"","")
+                            next_move_2=content["move"].replace("'","").replace("\"","")
+                        else:
+                            result = model.respond(f"Select the next move from this list. Return just the move: {legal_moves_list}",response_format=MoveSchema)
+                            next_move_2=(result.parsed)["move"].replace("'","").replace("\"","")
+                            print(f"LocalLLM picked {next_move_2}")
 
                         print(f"RaVEN Move: {next_move_2}")
                     
@@ -146,16 +164,11 @@ if __name__ == "__main__":
 
     # Path to Stockfish executable
     stockfish_path = "/opt/homebrew/bin/stockfish" 
-    results=[]
-
-    # LLM model
-    model = lms.llm("gemma-3-12b-it-qat")
-
-    
+    results=[]    
 
     for i in range(100):
         try:
-            result=play_timed_chess_match(stockfish_path, model, time_per_player_seconds=300)
+            result=play_timed_chess_match(stockfish_path, time_per_player_seconds=300)
             results.append(result)
             long_mean=np.mean(results)
             if i>10:
