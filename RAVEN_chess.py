@@ -5,6 +5,7 @@ import random
 import os
 import numpy as np
 import lmstudio as lms
+import math
 #import matplotlib.pyplot as plt
 #from terminalplot import plot
 
@@ -18,7 +19,7 @@ class MoveSchema(BaseModel):
     move: str
 
 # -----------------------------------------------------------------------------
-# Configuration
+# Configuration & Parameters
 # -----------------------------------------------------------------------------
 MODEL_NAME = "gpt-4o"
 #MODEL_NAME = "gpt-5-nano"
@@ -26,8 +27,8 @@ MAX_TOKENS = 1024
 PLAY_HUMAN=False
 USE_LOCAL_LLM=True
 PURE_LLM=False
-CURRICULAR_SPEED=20## AS the model learns, reduce the speed.
-HANDICAP_FACTOR=10
+CURRICULAR_SPEED=200## AS the model learns, reduce the speed.
+HANDICAP_FACTOR=100
 SYSTEM_PROMPT = "You are an algorithmic chess player. You provide answers in JSON format.  You will receive updates of the game and will follow algorithmic instructions. Good luck."
 
 
@@ -35,24 +36,39 @@ SYSTEM_PROMPT = "You are an algorithmic chess player. You provide answers in JSO
 all_scores=[]
 
 
-def chess_agent(board,a: list) -> str:
+def chess_agent(board,engine,a: list) -> str:
     """Given a list of legal moves returns one."""
 
     ## Positional heuristics
     ## Dont move to attacked square
+    ## Dont move if it leaves king unprotected
     ## Move from attached square
     ## Take the opponents king 
+    ## Take positions TOWARD attacking the opponents king
     ## Save the king
 
+    GIVES_CHECK_HEURISTIC=0.99
 
     columns_weights={'a':0.1,'b':0.2, 'c':0.3, 'd':0.4, 'e':0.4, 'f':0.3, 'g':0.2, 'h':0.1}
     rows_weights={'1':0.1,'2':0.2, '3':0.3, '4':0.4, '5':0.4, '6':0.3, '7':0.2, '8':0.1}
-    piece_weights={'R':0.15,'N':0.45, 'B':0.4, 'Q':0.3, 'K':0.01, 'P':0.3}
+    #piece_weights={'R':0.15,'N':0.45, 'B':0.4, 'Q':0.3, 'K':0.01, 'P':0.3}
+    piece_weights={'R':0.99,'N':0.99, 'B':0.99, 'Q':0.99, 'K':0.99, 'P':0.99}
+
     a_w=[]
     for i in a:
         p_type=board.piece_at(chess.parse_square(i[0:2])).symbol()
+        
+        move = chess.Move.from_uci(i)
+        board.push(move)
+        info = engine.analyse(board, chess.engine.Limit(depth=20))
+        counterfactual_score=math.exp(info['score'].white().score())
+        board.pop()
+
+
+        gives_check = GIVES_CHECK_HEURISTIC if  board.gives_check(move) else (1.0 - GIVES_CHECK_HEURISTIC)
+
         #print(p_type,type(p_type))
-        a_w.append(columns_weights[i[2]]*rows_weights[i[3]]*piece_weights[p_type])
+        a_w.append(columns_weights[i[2]]*rows_weights[i[3]]*piece_weights[p_type]*gives_check*counterfactual_score)
     next_move_2=random.choices(a,weights=a_w)[0]
     return next_move_2
 
@@ -162,7 +178,7 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
                                 print(f"LocalLLM picked {next_move_2}")
 
                             else:
-                                next_move_2=chess_agent(board,legal_moves_list)
+                                next_move_2=chess_agent(board,engine,legal_moves_list)
 
                         print(f"RaVEN Move: {next_move_2}")
                     
