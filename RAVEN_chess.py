@@ -26,6 +26,8 @@ MAX_TOKENS = 1024
 PLAY_HUMAN=False
 USE_LOCAL_LLM=True
 PURE_LLM=False
+CURRICULAR_SPEED=20## AS the model learns, reduce the speed.
+HANDICAP_FACTOR=10
 SYSTEM_PROMPT = "You are an algorithmic chess player. You provide answers in JSON format.  You will receive updates of the game and will follow algorithmic instructions. Good luck."
 
 
@@ -33,13 +35,24 @@ SYSTEM_PROMPT = "You are an algorithmic chess player. You provide answers in JSO
 all_scores=[]
 
 
-def chess_agent(a: list) -> str:
+def chess_agent(board,a: list) -> str:
     """Given a list of legal moves returns one."""
+
+    ## Positional heuristics
+    ## Dont move to attacked square
+    ## Move from attached square
+    ## Take the opponents king 
+    ## Save the king
+
+
     columns_weights={'a':0.1,'b':0.2, 'c':0.3, 'd':0.4, 'e':0.4, 'f':0.3, 'g':0.2, 'h':0.1}
     rows_weights={'1':0.1,'2':0.2, '3':0.3, '4':0.4, '5':0.4, '6':0.3, '7':0.2, '8':0.1}
+    piece_weights={'R':0.15,'N':0.45, 'B':0.4, 'Q':0.3, 'K':0.01, 'P':0.3}
     a_w=[]
     for i in a:
-        a_w.append(columns_weights[i[2]]*rows_weights[i[3]])
+        p_type=board.piece_at(chess.parse_square(i[0:2])).symbol()
+        #print(p_type,type(p_type))
+        a_w.append(columns_weights[i[2]]*rows_weights[i[3]]*piece_weights[p_type])
     next_move_2=random.choices(a,weights=a_w)[0]
     return next_move_2
 
@@ -63,7 +76,7 @@ def raven_chess(model,legal_moves_list) -> list:
     #print("RESPONSE", assistant_reponse)
     return next_move_2
 
-def play_timed_chess_match(engine_path, time_per_player_seconds=300):
+def play_timed_chess_match(engine_path, time_per_player_seconds=3):
     """
     Plays a timed chess match between a RaVEN Agent and a UCI-compatible chess engine.
 
@@ -92,7 +105,7 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=300):
   
 
     raven_time_left = time_per_player_seconds
-    engine_time_left = time_per_player_seconds
+    engine_time_left = time_per_player_seconds/HANDICAP_FACTOR
 
     print("Welcome to RaVEN Chess!")
     print(f"Each player starts with {time_per_player_seconds // 60} minutes.")
@@ -149,7 +162,7 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=300):
                                 print(f"LocalLLM picked {next_move_2}")
 
                             else:
-                                next_move_2=chess_agent(legal_moves_list)
+                                next_move_2=chess_agent(board,legal_moves_list)
 
                         print(f"RaVEN Move: {next_move_2}")
                     
@@ -181,7 +194,7 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=300):
     print("\n" + "=" * 30)
     print("Game Over!")
     print(board.result())
-    if board.result()=="1-0":
+    if str(board.result())=="1-0":
         result=1
     else:
         result=0
@@ -196,7 +209,7 @@ if __name__ == "__main__":
 
     for i in range(100):
         try:
-            result=play_timed_chess_match(stockfish_path, time_per_player_seconds=300)
+            result=play_timed_chess_match(stockfish_path, time_per_player_seconds=CURRICULAR_SPEED)
             results.append(result)
             long_mean=np.mean(results)
             if i>10:
