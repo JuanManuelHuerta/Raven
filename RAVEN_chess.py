@@ -5,6 +5,8 @@ import random
 import os
 import numpy as np
 import lmstudio as lms
+#import matplotlib.pyplot as plt
+#from terminalplot import plot
 
 from openai import OpenAI
 from typing import Optional
@@ -23,12 +25,22 @@ MODEL_NAME = "gpt-4o"
 MAX_TOKENS = 1024
 PLAY_HUMAN=False
 USE_LOCAL_LLM=True
+PURE_LLM=False
 SYSTEM_PROMPT = "You are an algorithmic chess player. You provide answers in JSON format.  You will receive updates of the game and will follow algorithmic instructions. Good luck."
+
+
+
+all_scores=[]
 
 
 def chess_agent(a: list) -> str:
     """Given a list of legal moves returns one."""
-    next_move_2=random.choice(a)
+    columns_weights={'a':0.1,'b':0.2, 'c':0.3, 'd':0.4, 'e':0.4, 'f':0.3, 'g':0.2, 'h':0.1}
+    rows_weights={'1':0.1,'2':0.2, '3':0.3, '4':0.4, '5':0.4, '6':0.3, '7':0.2, '8':0.1}
+    a_w=[]
+    for i in a:
+        a_w.append(columns_weights[i[2]]*rows_weights[i[3]])
+    next_move_2=random.choices(a,weights=a_w)[0]
     return next_move_2
 
 def raven_chess(model,legal_moves_list) -> list:
@@ -62,8 +74,13 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=300):
     question = "Pick a move at random. I will keep updating the options. Just pick one."
     board = chess.Board()
     engine = chess.engine.SimpleEngine.popen_uci("/opt/homebrew/bin/stockfish")
+    global all_scores
 
+    #plt.ion() 
+    #plt.plot([0])
+    #plt.show(block=False)    
     if USE_LOCAL_LLM is False:
+
         client = OpenAI()
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -94,8 +111,14 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=300):
                     legal_moves_iterator = board.legal_moves
                     legal_moves_list = [move.uci() for move in legal_moves_iterator]
                     info = engine.analyse(board, chess.engine.Limit(depth=20))
-                    print("INFO!!!",info['score'])
-
+                    current_score=info['score'].white().score()
+                    if type(current_score) is int:
+                        all_scores.append(current_score)
+                    #plt.plot(all_scores)
+                    #plt.draw()
+                    #plot(all_scores)
+                    print(f"Info!!! {current_score}, {all_scores}")
+                    print(f"Info!!! ",np.mean(all_scores), np.std(all_scores))
                     print("Legal moves:",legal_moves_list)
                     if PLAY_HUMAN == True:
                         next_move_2 = input("Human RaVEN move: ")
@@ -119,9 +142,14 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=300):
                             #next_move_2=random.choice(legal_moves_list).replace("'","").replace("\"","")
                             next_move_2=content["move"].replace("'","").replace("\"","")
                         else:
-                            result = model.respond(f"Select the next move from this list. Return just the move: {legal_moves_list}",response_format=MoveSchema)
-                            next_move_2=(result.parsed)["move"].replace("'","").replace("\"","")
-                            print(f"LocalLLM picked {next_move_2}")
+
+                            if PURE_LLM is True:
+                                result = model.respond(f"Select the next move from this list. Return just the move: {legal_moves_list}",response_format=MoveSchema)
+                                next_move_2=(result.parsed)["move"].replace("'","").replace("\"","")
+                                print(f"LocalLLM picked {next_move_2}")
+
+                            else:
+                                next_move_2=chess_agent(legal_moves_list)
 
                         print(f"RaVEN Move: {next_move_2}")
                     
