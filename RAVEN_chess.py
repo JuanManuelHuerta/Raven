@@ -11,7 +11,6 @@ import math
 
 from openai import OpenAI
 from typing import Optional
-
 from pydantic import BaseModel
 
 # A class based schema for a book
@@ -27,10 +26,12 @@ MAX_TOKENS = 1024
 PLAY_HUMAN=False
 USE_LOCAL_LLM=True
 PURE_LLM=False
-CURRICULAR_SPEED=200## AS the model learns, reduce the speed.
-HANDICAP_FACTOR=100
+CURRICULAR_SPEED=2000## AS the model learns, reduce the speed.
+HANDICAP_FACTOR=1000
+MAX_TURNS_PER_GAME=200
+GIVES_CHECK_HEURISTIC=0.90
+TEMPERATURE=0.5
 SYSTEM_PROMPT = "You are an algorithmic chess player. You provide answers in JSON format.  You will receive updates of the game and will follow algorithmic instructions. Good luck."
-
 
 
 all_scores=[]
@@ -39,15 +40,10 @@ all_scores=[]
 def chess_agent(board,engine,a: list) -> str:
     """Given a list of legal moves returns one."""
 
-    ## Positional heuristics
-    ## Dont move to attacked square
-    ## Dont move if it leaves king unprotected
-    ## Move from attached square
-    ## Take the opponents king 
-    ## Take positions TOWARD attacking the opponents king
-    ## Save the king
-
-    GIVES_CHECK_HEURISTIC=0.99
+    ## Openings
+    ## Midgame
+    ## Endgame << ---- Looks like winning needs to be addressed separately.
+    
 
     columns_weights={'a':0.1,'b':0.2, 'c':0.3, 'd':0.4, 'e':0.4, 'f':0.3, 'g':0.2, 'h':0.1}
     rows_weights={'1':0.1,'2':0.2, '3':0.3, '4':0.4, '5':0.4, '6':0.3, '7':0.2, '8':0.1}
@@ -61,14 +57,22 @@ def chess_agent(board,engine,a: list) -> str:
         move = chess.Move.from_uci(i)
         board.push(move)
         info = engine.analyse(board, chess.engine.Limit(depth=20))
-        counterfactual_score=math.exp(info['score'].white().score())
+        this_score=info['score'].white().score()
+        try:
+            counterfactual_score=math.exp(this_score/TEMPERATURE)
+        except:
+            counterfactual_score=0.0
+        
         board.pop()
 
-
+        #print("Counterfactual ", counterfactual_score)
         gives_check = GIVES_CHECK_HEURISTIC if  board.gives_check(move) else (1.0 - GIVES_CHECK_HEURISTIC)
 
         #print(p_type,type(p_type))
-        a_w.append(columns_weights[i[2]]*rows_weights[i[3]]*piece_weights[p_type]*gives_check*counterfactual_score)
+        #a_w.append(columns_weights[i[2]]*rows_weights[i[3]]*piece_weights[p_type]*gives_check*counterfactual_score)
+        a_w.append(0.0*columns_weights[i[2]]*rows_weights[i[3]]*piece_weights[p_type]*gives_check+ counterfactual_score)
+        #print(a_w)
+    print("PROBABILITIES",a_w)
     next_move_2=random.choices(a,weights=a_w)[0]
     return next_move_2
 
@@ -122,12 +126,14 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
 
     raven_time_left = time_per_player_seconds
     engine_time_left = time_per_player_seconds/HANDICAP_FACTOR
+    current_game_moves=0
 
     print("Welcome to RaVEN Chess!")
     print(f"Each player starts with {time_per_player_seconds // 60} minutes.")
     print("Moves are specified in standard algebraic notation (e.g., 'e2e4', 'Nf3').")
+    found_error=False
 
-    while not board.is_game_over():
+    while (not board.is_game_over()) and current_game_moves<MAX_TURNS_PER_GAME and found_error is False:
         print("\n" + "=" * 30)
         print(board)
         print(f"RaVEN Time Left: {raven_time_left:.1f}s | Engine Time Left: {engine_time_left:.1f}s")
@@ -187,9 +193,13 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
                         board.push(move)
                         break
                     else:
-                        print("Illegal move. Try again.")
+                        print("Illegal move. Bailing.")
+                        found_error=True
+                        break
                 except ValueError:
-                    print("Invalid move format or illegal move. Try again.")
+                    print("Invalid move format or illegal move. Bailing.")
+                    found_error=True
+                    break
             end_time = time.time()
             raven_time_left -= (end_time - start_time)
             if raven_time_left <= 0:
@@ -206,14 +216,21 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
             if engine_time_left <= 0:
                 print("Engine loses on time!")
                 break
+        current_game_moves+=1
 
     print("\n" + "=" * 30)
     print("Game Over!")
-    print(board.result())
-    if str(board.result())=="1-0":
-        result=1
+    if (current_game_moves>=MAX_TURNS_PER_GAME) or found_error is True:
+        result=0.1
     else:
-        result=0
+        text_result=str(board.result())
+        print(text_result)
+        if text_result=="1-0":
+            result=1
+        elif text_result=="1/2-1/2":
+            result=0.5
+        else:
+            result=0
     engine.quit()
     return result
 
@@ -232,7 +249,7 @@ if __name__ == "__main__":
                 short_mean=np.mean(results[-10:])
             else:
                 short_mean=long_mean
-            print(f"Game {i}, {long_mean} {short_mean}")
+            print(f"Game {i}, {long_mean} {short_mean} {results}")
         except FileNotFoundError:
             print(f"Error: Chess engine not found at '{stockfish_path}'.")
             print("Please ensure the path is correct and the engine is installed.")
