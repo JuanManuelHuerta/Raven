@@ -24,6 +24,7 @@ MODEL_NAME = "gpt-4o"
 #MODEL_NAME = "gpt-5-nano"
 MAX_TOKENS = 1024
 PLAY_HUMAN=False
+NUM_GAMES=10
 USE_LOCAL_LLM=True
 PURE_LLM=False
 CURRICULAR_SPEED=2000## AS the model learns, reduce the speed.
@@ -35,6 +36,135 @@ SYSTEM_PROMPT = "You are an algorithmic chess player. You provide answers in JSO
 
 
 all_scores=[]
+
+
+# Piece-Square Tables (White's perspective)
+# Indexed as [rank][file] where rank 0 = rank 1, rank 7 = rank 8
+# file 0 = a-file, file 7 = h-file
+
+
+piece_square_table={
+chess.PAWN : [
+    [0,  0,  0,  0,  0,  0,  0,  0],
+    [50, 50, 50, 50, 50, 50, 50, 50],
+    [10, 10, 20, 30, 30, 20, 10, 10],
+    [5,  5, 10, 25, 25, 10,  5,  5],
+    [0,  0,  0, 20, 20,  0,  0,  0],
+    [5, -5,-10,  0,  0,-10, -5,  5],
+    [5, 10, 10,-20,-20, 10, 10,  5],
+    [0,  0,  0,  0,  0,  0,  0,  0]
+],
+
+chess.KNIGHT :  [
+    [-50,-40,-30,-30,-30,-30,-40,-50],
+    [-40,-20,  0,  0,  0,  0,-20,-40],
+    [-30,  0, 10, 15, 15, 10,  0,-30],
+    [-30,  5, 15, 20, 20, 15,  5,-30],
+    [-30,  0, 15, 20, 20, 15,  0,-30],
+    [-30,  5, 10, 15, 15, 10,  5,-30],
+    [-40,-20,  0,  5,  5,  0,-20,-40],
+    [-50,-40,-30,-30,-30,-30,-40,-50]
+],
+
+chess.BISHOP : [
+    [-20,-10,-10,-10,-10,-10,-10,-20],
+    [-10,  0,  0,  0,  0,  0,  0,-10],
+    [-10,  0,  5, 10, 10,  5,  0,-10],
+    [-10,  5,  5, 10, 10,  5,  5,-10],
+    [-10,  0, 10, 10, 10, 10,  0,-10],
+    [-10, 10, 10, 10, 10, 10, 10,-10],
+    [-10,  5,  0,  0,  0,  0,  5,-10],
+    [-20,-10,-10,-10,-10,-10,-10,-20]
+],
+
+chess.ROOK :  [
+    [0,  0,  0,  0,  0,  0,  0,  0],
+    [5, 10, 10, 10, 10, 10, 10,  5],
+    [-5,  0,  0,  0,  0,  0,  0, -5],
+    [-5,  0,  0,  0,  0,  0,  0, -5],
+    [-5,  0,  0,  0,  0,  0,  0, -5],
+    [-5,  0,  0,  0,  0,  0,  0, -5],
+    [-5,  0,  0,  0,  0,  0,  0, -5],
+    [0,  0,  0,  5,  5,  0,  0,  0]
+],
+
+chess.QUEEN :  [
+    [-20,-10,-10, -5, -5,-10,-10,-20],
+    [-10,  0,  0,  0,  0,  0,  0,-10],
+    [-10,  0,  5,  5,  5,  5,  0,-10],
+    [-5,  0,  5,  5,  5,  5,  0, -5],
+    [0,  0,  5,  5,  5,  5,  0, -5],
+    [-10,  5,  5,  5,  5,  5,  0,-10],
+    [-10,  0,  5,  0,  0,  0,  0,-10],
+    [-20,-10,-10, -5, -5,-10,-10,-20]
+],
+
+chess.KING :  [
+    [-30,-40,-40,-50,-50,-40,-40,-30],
+    [-30,-40,-40,-50,-50,-40,-40,-30],
+    [-30,-40,-40,-50,-50,-40,-40,-30],
+    [-30,-40,-40,-50,-50,-40,-40,-30],
+    [-20,-30,-30,-40,-40,-30,-30,-20],
+    [-10,-20,-20,-20,-20,-20,-20,-10],
+    [20, 20,  0,  0,  0,  0, 20, 20],
+    [20, 30, 10,  0,  0, 10, 30, 20]
+],
+
+'king_end_game' : [
+    [-50,-40,-30,-20,-20,-30,-40,-50],
+    [-30,-20,-10,  0,  0,-10,-20,-30],
+    [-30,-10, 20, 30, 30, 20,-10,-30],
+    [-30,-10, 30, 40, 40, 30,-10,-30],
+    [-30,-10, 30, 40, 40, 30,-10,-30],
+    [-30,-10, 20, 30, 30, 20,-10,-30],
+    [-30,-30,  0,  0,  0,  0,-30,-30],
+    [-50,-30,-30,-30,-30,-30,-30,-50]
+]
+
+}
+
+def evaluate(board):
+    """Evaluates a board from the WHITE perspective based on basic materiel and position."""
+
+    # If game is over, return definitive scores
+    if board.is_checkmate():
+        if board.turn == WHITE:
+            return -1000000  # Black won
+        else:
+            return +1000000  # White won
+    
+    if board.is_stalemate() or board.is_insufficient_material():
+        return 0  # Draw
+    
+    score = 0
+    
+    # 1. MATERIAL COUNTING
+    piece_values = {
+        chess.PAWN: 100,
+        chess.KNIGHT: 320,
+        chess.BISHOP: 330,
+        chess.ROOK: 500,
+        chess.QUEEN: 900,
+        chess.KING: 0  # King has no material value
+    }
+    
+    for square_index, piece in board.piece_map().items():
+        value = piece_values[piece.piece_type]
+        #square_index = chess.parse_square(square) 
+        
+        positional_value = piece_square_table[piece.piece_type][chess.square_file(square_index)][chess.square_rank(square_index)]
+        if piece.color == chess.WHITE:
+            score += (value + positional_value)
+        else:
+            score -= (value + positional_value)
+    
+    # 3. POSITIONAL BONUSES (optional for "basic")
+    # Mobility: count legal moves (more mobility = better)
+    # Pawn structure: penalize doubled/isolated pawns
+    # King safety: penalize exposed king in middlegame
+    
+    return score
+
 
 
 def chess_agent(board,engine,a: list) -> str:
@@ -67,12 +197,17 @@ def chess_agent(board,engine,a: list) -> str:
 
         #print("Counterfactual ", counterfactual_score)
         gives_check = GIVES_CHECK_HEURISTIC if  board.gives_check(move) else (1.0 - GIVES_CHECK_HEURISTIC)
+        
+
+        ##. This is an alternative basic score
 
         #print(p_type,type(p_type))
         #a_w.append(columns_weights[i[2]]*rows_weights[i[3]]*piece_weights[p_type]*gives_check*counterfactual_score)
         a_w.append(0.0*columns_weights[i[2]]*rows_weights[i[3]]*piece_weights[p_type]*gives_check+ counterfactual_score)
         #print(a_w)
     print("PROBABILITIES",a_w)
+    print(">>>>>>>. EVAL. EVAL EVAL >>>>>>",evaluate(board))
+
     next_move_2=random.choices(a,weights=a_w)[0]
     return next_move_2
 
@@ -240,7 +375,7 @@ if __name__ == "__main__":
     stockfish_path = "/opt/homebrew/bin/stockfish" 
     results=[]    
 
-    for i in range(100):
+    for i in range(NUM_GAMES):
         try:
             result=play_timed_chess_match(stockfish_path, time_per_player_seconds=CURRICULAR_SPEED)
             results.append(result)
