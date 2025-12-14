@@ -1,4 +1,46 @@
-# Raven: Reasoning Agents via Explanatory laNdmarks
+# RavenChess
+
+## Algorithm implementations
+
+1. ALPHA-BETA
+2. HUMAN
+3. LOCAL_LLM
+4. CLOUD_AGENT
+5. RANDOM_MOVE
+
+
+
+## General Strategy
+
+1. Openings
+2. Midgame
+3. Closing
+
+
+
+## topics
+
+Stockfish
+NNUE
+Leela Chess Zero
+Syzygy Bases
+
+
+## References
+
+
+1. https://www.chessprogramming.org/Alpha-Beta
+2. https://www.chessprogramming.org/Main_Page
+3. Hendrik Baier (2017). A Rollout-Based Search Algorithm Unifying MCTS and Alpha-Beta. Computer Games » MCαβ, Monte-Carlo Tree Search
+
+
+
+
+
+
+
+---
+
 
 This is an implementation of the RAVEN approach. As reference application, this code implements a Finance analysis engine that can carry out complex analytic tasks.
 

@@ -23,15 +23,27 @@ class MoveSchema(BaseModel):
 MODEL_NAME = "gpt-4o"
 #MODEL_NAME = "gpt-5-nano"
 MAX_TOKENS = 1024
-PLAY_HUMAN=False
 NUM_GAMES=10
-USE_LOCAL_LLM=True
-PURE_LLM=False
+
+
+#PLAY_HUMAN=False
+#USE_LOCAL_LLM=True
+#PURE_LLM=False
+
+
+
+#ALGORITHM='ALPHA-BETA'
+#ALGORITHM='HUMAN'
+ALGORITHM='LOCAL_LLM'
+#ALGORITHM='CLOUD_AGENT'
+#ALGORITHM='RANDOM_MOVE'
+
 CURRICULAR_SPEED=2000## AS the model learns, reduce the speed.
 HANDICAP_FACTOR=1000
 MAX_TURNS_PER_GAME=200
 GIVES_CHECK_HEURISTIC=0.90
 TEMPERATURE=0.5
+
 SYSTEM_PROMPT = "You are an algorithmic chess player. You provide answers in JSON format.  You will receive updates of the game and will follow algorithmic instructions. Good luck."
 
 
@@ -41,7 +53,6 @@ all_scores=[]
 # Piece-Square Tables (White's perspective)
 # Indexed as [rank][file] where rank 0 = rank 1, rank 7 = rank 8
 # file 0 = a-file, file 7 = h-file
-
 
 piece_square_table={
 chess.PAWN : [
@@ -166,6 +177,69 @@ def evaluate(board):
     return score
 
 
+'''
+Next is work in progres
+'''
+
+
+
+def alpha_beta_search(board, depth):
+    """
+    Main search function - finds the best move for the current position
+    Returns: best_move (chess.Move object)
+    """
+    best_move = None
+    alpha = float('-inf')
+    beta = float('inf')
+    
+    for move in board.legal_moves:
+        board.push(move)
+        score = -alpha_beta(board, depth - 1, -beta, -alpha)
+        board.pop()
+        
+        if score > alpha:
+            alpha = score
+            best_move = move
+    
+    return best_move
+
+
+def alpha_beta(board, depth, alpha, beta):
+    """
+    Recursive alpha-beta search
+    Returns: evaluation score from current player's perspective
+    
+    Args:
+        board: chess.Board object
+        depth: remaining search depth
+        alpha: best score for maximizing player
+        beta: best score for minimizing player
+    """
+    # Base case: reached maximum depth or game over
+    if depth == 0 or board.is_game_over():
+        return evaluate(board)
+    
+    max_score = float('-inf')
+    
+    for move in board.legal_moves:
+        board.push(move)
+        
+        # Negamax framework: negate score from opponent's perspective
+        score = -alpha_beta(board, depth - 1, -beta, -alpha)
+        
+        board.pop()
+        
+        max_score = max(max_score, score)
+        alpha = max(alpha, score)
+        
+        # Beta cutoff: opponent won't allow this line
+        if alpha >= beta:
+            break  # Prune remaining moves
+    
+    return max_score
+
+
+
 
 def chess_agent(board,engine,a: list) -> str:
     """Given a list of legal moves returns one."""
@@ -179,8 +253,8 @@ def chess_agent(board,engine,a: list) -> str:
     rows_weights={'1':0.1,'2':0.2, '3':0.3, '4':0.4, '5':0.4, '6':0.3, '7':0.2, '8':0.1}
     #piece_weights={'R':0.15,'N':0.45, 'B':0.4, 'Q':0.3, 'K':0.01, 'P':0.3}
     piece_weights={'R':0.99,'N':0.99, 'B':0.99, 'Q':0.99, 'K':0.99, 'P':0.99}
-
     a_w=[]
+    
     for i in a:
         p_type=board.piece_at(chess.parse_square(i[0:2])).symbol()
         
@@ -243,11 +317,13 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
     board = chess.Board()
     engine = chess.engine.SimpleEngine.popen_uci("/opt/homebrew/bin/stockfish")
     global all_scores
-
+    algorithm=ALGORITHM
+    
     #plt.ion() 
     #plt.plot([0])
     #plt.show(block=False)    
-    if USE_LOCAL_LLM is False:
+
+    if algorithm == 'CLOUD_AGENT':
 
         client = OpenAI()
         messages = [
@@ -255,7 +331,8 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
             {"role": "user", "content": question}  # Add the initial question
             ]   
         print("Starting OpenAI Agent with Messages:", messages)
-    else:
+ 
+    if algorithm == 'LOCAL_LLM':
         model = lms.llm("gemma-3-12b-it-qat")
   
 
@@ -282,48 +359,52 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
                     legal_moves_list = [move.uci() for move in legal_moves_iterator]
                     info = engine.analyse(board, chess.engine.Limit(depth=20))
                     current_score=info['score'].white().score()
+
                     if type(current_score) is int:
                         all_scores.append(current_score)
+
                     #plt.plot(all_scores)
                     #plt.draw()
                     #plot(all_scores)
+                    
                     print(f"Info!!! {current_score}, {all_scores}")
                     print(f"Info!!! ",np.mean(all_scores), np.std(all_scores))
                     print("Legal moves:",legal_moves_list)
-                    if PLAY_HUMAN == True:
+                    print(f"ALGORITHM {algorithm}")
+
+                    if algorithm == 'HUMAN':
                         next_move_2 = input("Human RaVEN move: ")
+
+                    elif algorithm == 'CLOUD_AGENT':
+                        messages.append({"role": "user", "content": str(legal_moves_list)})
+                        print("MESSAGES",messages)
+                        response = client.chat.completions.create(
+                            model=MODEL_NAME,
+                            messages=messages,
+                            temperature=0.0,
+                            response_format={"type": "json_object"} 
+                            )
+
+                        #content = next_iter_input
+                        content=eval(response.choices[0].message.content)
+                        print("RESPONESE:",content)
+                        #next_move_2=random.choice(legal_moves_list).replace("'","").replace("\"","")
+                        next_move_2=content["move"].replace("'","").replace("\"","")
+                    
+                    elif algorithm == 'LOCAL_LLM':
+                        result = model.respond(f"Select the next move from this list. Return just the move: {legal_moves_list}",response_format=MoveSchema)
+                        next_move_2=(result.parsed)["move"].replace("'","").replace("\"","")
+
+                    elif algorithm == 'ALPHA-BETA':
+                        next_move_2=chess_agent(board,engine,legal_moves_list)
+
                     else:
-                        print("RaVEN Thinking")
-                        #next_move_2=raven_chess(model,legal_moves_list)    
-                        if USE_LOCAL_LLM is False:
+                        next_move_2=random.choice(legal_moves_list)
 
-                            messages.append({"role": "user", "content": str(legal_moves_list)})
-                            print("MESSAGES",messages)
-                            response = client.chat.completions.create(
-                                model=MODEL_NAME,
-                                messages=messages,
-                                temperature=0.0,
-                                response_format={"type": "json_object"} 
-                                )
-
-                            #content = next_iter_input
-                            content=eval(response.choices[0].message.content)
-                            print("RESPONESE:",content)
-                            #next_move_2=random.choice(legal_moves_list).replace("'","").replace("\"","")
-                            next_move_2=content["move"].replace("'","").replace("\"","")
-                        else:
-
-                            if PURE_LLM is True:
-                                result = model.respond(f"Select the next move from this list. Return just the move: {legal_moves_list}",response_format=MoveSchema)
-                                next_move_2=(result.parsed)["move"].replace("'","").replace("\"","")
-                                print(f"LocalLLM picked {next_move_2}")
-
-                            else:
-                                next_move_2=chess_agent(board,engine,legal_moves_list)
-
-                        print(f"RaVEN Move: {next_move_2}")
+                    print(f"RaVEN {algorithm} Move: {next_move_2}")
                     
                     move = board.parse_san(next_move_2)
+
                     if move in board.legal_moves:
                         board.push(move)
                         break
@@ -332,7 +413,7 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
                         found_error=True
                         break
                 except ValueError:
-                    print("Invalid move format or illegal move. Bailing.")
+                    print("Invalid move format or illegal move. Bailing out.")
                     found_error=True
                     break
             end_time = time.time()
