@@ -33,8 +33,9 @@ NUM_GAMES=10
 
 
 #ALGORITHM='ALPHA-BETA'
+ALGORITHM='1-STEP-LOOKAHEAD'
 #ALGORITHM='HUMAN'
-ALGORITHM='LOCAL_LLM'
+#ALGORITHM='LOCAL_LLM'
 #ALGORITHM='CLOUD_AGENT'
 #ALGORITHM='RANDOM_MOVE'
 
@@ -139,7 +140,7 @@ def evaluate(board):
 
     # If game is over, return definitive scores
     if board.is_checkmate():
-        if board.turn == WHITE:
+        if board.turn == chess.WHITE:
             return -1000000  # Black won
         else:
             return +1000000  # White won
@@ -181,8 +182,89 @@ def evaluate(board):
 Next is work in progres
 '''
 
+def alphabeta(board, depth, alpha, beta, maximizing_player):
+    """
+    Alpha-beta pruning algorithm implementation.
+    
+    Args:
+        board: chess.Board object representing the current position
+        depth: Maximum search depth (plies)
+        alpha: Best value maximizing player can guarantee
+        beta: Best value minimizing player can guarantee
+        maximizing_player: True if maximizing, False if minimizing
+    
+    Returns:
+        The heuristic value of the position
+    """
+    # Terminal condition: depth reached or game over
+    if depth == 0 or board.is_game_over():
+        return evaluate(board)
+        #info = engine.analyse(board, chess.engine.Limit(depth=20))
+        #this_score=info['score'].white().score()
+    
+    if maximizing_player:
+        value = float('-inf')
+        for move in board.legal_moves:
+            board.push(move)
+            value = max(value, alphabeta(board, depth - 1, alpha, beta, False))
+            board.pop()
+            
+            if value >= beta:
+                break  # Beta cutoff
+            alpha = max(alpha, value)
+        return value
+    else:
+        value = float('inf')
+        for move in board.legal_moves:
+            board.push(move)
+            value = min(value, alphabeta(board, depth - 1, alpha, beta, True))
+            board.pop()
+            
+            if value <= alpha:
+                break  # Alpha cutoff
+            beta = min(beta, value)
+        return value
 
 
+def find_best_move(board, depth):
+    """
+    Find the best move using alpha-beta pruning.
+    
+    Args:
+        board: chess.Board object
+        depth: Search depth (plies)
+    
+    Returns:
+        Best move found
+    """
+    best_move = None
+    best_value = float('-inf') if board.turn == chess.WHITE else float('inf')
+    alpha = float('-inf')
+    beta = float('inf')
+    
+    for move in board.legal_moves:
+        board.push(move)
+        
+        if board.turn == chess.BLACK:  # We just made a white move
+            value = alphabeta(board, depth - 1, alpha, beta, False)
+            if value > best_value:
+                best_value = value
+                best_move = move
+            alpha = max(alpha, value)
+        else:  # We just made a black move
+            value = alphabeta(board, depth - 1, alpha, beta, True)
+            if value < best_value:
+                best_value = value
+                best_move = move
+            beta = min(beta, value)
+        
+        board.pop()
+    
+    return best_move, best_value
+
+
+
+'''
 def alpha_beta_search(board, depth):
     """
     Main search function - finds the best move for the current position
@@ -239,7 +321,7 @@ def alpha_beta(board, depth, alpha, beta):
     return max_score
 
 
-
+'''
 
 def chess_agent(board,engine,a: list) -> str:
     """Given a list of legal moves returns one."""
@@ -366,7 +448,7 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
                     #plt.plot(all_scores)
                     #plt.draw()
                     #plot(all_scores)
-                    
+
                     print(f"Info!!! {current_score}, {all_scores}")
                     print(f"Info!!! ",np.mean(all_scores), np.std(all_scores))
                     print("Legal moves:",legal_moves_list)
@@ -374,6 +456,8 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
 
                     if algorithm == 'HUMAN':
                         next_move_2 = input("Human RaVEN move: ")
+                        move = board.parse_san(next_move_2)
+
 
                     elif algorithm == 'CLOUD_AGENT':
                         messages.append({"role": "user", "content": str(legal_moves_list)})
@@ -390,32 +474,47 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
                         print("RESPONESE:",content)
                         #next_move_2=random.choice(legal_moves_list).replace("'","").replace("\"","")
                         next_move_2=content["move"].replace("'","").replace("\"","")
+                        move = board.parse_san(next_move_2)
+
                     
                     elif algorithm == 'LOCAL_LLM':
                         result = model.respond(f"Select the next move from this list. Return just the move: {legal_moves_list}",response_format=MoveSchema)
                         next_move_2=(result.parsed)["move"].replace("'","").replace("\"","")
+                        move = board.parse_san(next_move_2)
+
 
                     elif algorithm == 'ALPHA-BETA':
+                        #next_move_2 = alpha_beta_search(board, depth=4)
+                        next_move_2, s2 = find_best_move(board,depth=5)
+                        move=next_move_2
+
+
+                    elif algorithm == '1-STEP-LOOKAHEAD':
                         next_move_2=chess_agent(board,engine,legal_moves_list)
+                        move = board.parse_san(next_move_2)
+                    
 
                     else:
                         next_move_2=random.choice(legal_moves_list)
+                        move = board.parse_san(next_move_2)
 
                     print(f"RaVEN {algorithm} Move: {next_move_2}")
                     
-                    move = board.parse_san(next_move_2)
-
+                    
                     if move in board.legal_moves:
+                        print("Im here")
                         board.push(move)
                         break
                     else:
                         print("Illegal move. Bailing.")
                         found_error=True
                         break
+
                 except ValueError:
                     print("Invalid move format or illegal move. Bailing out.")
                     found_error=True
                     break
+
             end_time = time.time()
             raven_time_left -= (end_time - start_time)
             if raven_time_left <= 0:
