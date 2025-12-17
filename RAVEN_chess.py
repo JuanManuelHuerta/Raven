@@ -1,5 +1,6 @@
 import chess
 import chess.engine
+import chess.polyglot
 import time
 import random
 import os
@@ -26,23 +27,32 @@ MAX_TOKENS = 1024
 NUM_GAMES=10
 
 
+#------------------------------------------------------------
+# KOMODO, baby!
+#------------------------------------------------------------
+PATH_TO_OPENINGS = "data/polyglot/komodo.bin"
+USE_OPENINGS = True
+when_to_use_openings = set(["1-STEP-LOOKAHEAD","ALPHA-BETA"])
+
 #PLAY_HUMAN=False
 #USE_LOCAL_LLM=True
 #PURE_LLM=False
 
 
-ALGORITHM_B='ENGINE'
-#ALGORITHM_B='HUMAN'
+#ALGORITHM_B='ENGINE'
+ALGORITHM_B='HUMAN'
 
-#ALGORITHM_A='ALPHA-BETA'
-ALGORITHM_A='ENGINE'
-#ALGORITHM_B='1-STEP-LOOKAHEAD'
-#ALGORITHM_B='HUMAN'
-#ALGORITHM_B='LOCAL_LLM'
-#ALGORITHM_B='CLOUD_AGENT'
-#ALGORITHM_B='RANDOM_MOVE'
+ALGORITHM_A='ALPHA-BETA'
+#ALGORITHM_A='ENGINE'
+#ALGORITHM_A='1-STEP-LOOKAHEAD'
+#ALGORITHM_A='HUMAN'
+#ALGORITHM_A='LOCAL_LLM'
+#ALGORITHM_A='CLOUD_AGENT'
+#ALGORITHM_A='RANDOM_MOVE'
 
-CURRICULAR_SPEED=200## AS the model learns, reduce the speed.
+CURRICULAR_SPEED=200.    ## As the model learns, reduce the speed.
+MAX_SECS_FOR_ENGINE=0.5  ## Cap the engine's time
+ALPHA_BETA_DEPTH=3
 HANDICAP_FACTOR=1
 MAX_TURNS_PER_GAME=200
 GIVES_CHECK_HEURISTIC=0.90
@@ -267,6 +277,53 @@ def find_best_move(board, depth):
 
 
 
+
+def get_weighted_book_move(board, book_path):
+    """
+    Get a move from the opening book with weighted random selection.
+    This adds variety to the opening play.
+    
+    Args:
+        board: chess.Board object
+        book_path: Path to the polyglot opening book file (.bin)
+    
+    Returns:
+        A weighted random move from the book, or None if position not in book
+    """
+    try:
+        with chess.polyglot.open_reader(book_path) as reader:
+            # weighted_choice will pick a move based on weights in the book
+            move = reader.weighted_choice(board).move
+            return move
+    except (FileNotFoundError, IndexError):
+        pass
+    return None
+
+
+def play_with_book(board, depth, book_path):
+    """
+    Make a move using opening book if available, otherwise use alpha-beta.
+    
+    Args:
+        board: chess.Board object
+        depth: Search depth for alpha-beta (if not using book)
+        book_path: Path to the polyglot opening book file
+        use_weighted: If True, use weighted random selection from book
+    
+    Returns:
+        (move, source) tuple where source is "book" or "search"
+    """
+    # Try to get a move from the opening book
+    book_move = get_weighted_book_move(board, book_path)
+     
+    if book_move:
+        print("!!!!!!!!!!!!!!!!!!!!!  DOING BOOK MOVE !!!!!!!!!!!!!!!!!!!!!!!!!!")
+        return book_move, "book"
+    
+    # If not in book, use alpha-beta search
+    best_move, _ = find_best_move(board, depth)
+    return best_move, "search"
+
 '''
 def alpha_beta_search(board, depth):
     """
@@ -464,7 +521,8 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
                         move = board.parse_san(next_move_2)
 
                     elif algorithm == 'ENGINE':
-                        result = engine.play(board, chess.engine.Limit(time=raven_time_left / 100)) # Adjust engine thinking time
+                        move_time=min(raven_time_left/100,MAX_SECS_FOR_ENGINE)
+                        result = engine.play(board, chess.engine.Limit(move_time)) # Adjust engine thinking time
                         next_move_2 = result.move
                         move=result.move
 
@@ -495,7 +553,10 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
 
                     elif algorithm == 'ALPHA-BETA':
                         #next_move_2 = alpha_beta_search(board, depth=4)
-                        next_move_2, s2 = find_best_move(board,depth=6)
+                        if USE_OPENINGS:
+                            next_move_2, s2 = play_with_book(board,depth=ALPHA_BETA_DEPTH,book_path=PATH_TO_OPENINGS)
+                        else:
+                            next_move_2, s2 = find_best_move(board,depth=ALPHA_BETA_DEPTH)
                         move=next_move_2
 
 
@@ -535,7 +596,9 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
             start_time = time.time()
             
             if algorithm_b == 'ENGINE':
-                result = engine.play(board, chess.engine.Limit(time=engine_time_left / 100)) # Adjust engine thinking time
+
+                move_time=min(raven_time_left/100,MAX_SECS_FOR_ENGINE)
+                result = engine.play(board, chess.engine.Limit(move_time)) # Adjust engine thinking time
                 next_move_2 = result.move
                 board.push(result.move)
 
