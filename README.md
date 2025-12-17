@@ -3,12 +3,15 @@
 ## Algorithm implementations
 
 1. ALPHA-BETA
-2. HUMAN
-3. LOCAL_LLM
-4. CLOUD_AGENT
-5. RANDOM_MOVE
+2. 1-STEP-LOOKAHEAD: Greedy Search
+3. HUMAN
+4. LOCAL_LLM
+5. CLOUD_AGENT
+6. RANDOM_MOVE
+7. ENGINE (Stockfish)
 
 
+Supports Polyglot book openings (using Komodo book). 
 
 ## General Strategy
 
