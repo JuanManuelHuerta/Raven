@@ -31,16 +31,19 @@ NUM_GAMES=10
 #PURE_LLM=False
 
 
+ALGORITHM_B='ENGINE'
+#ALGORITHM_B='HUMAN'
 
-#ALGORITHM='ALPHA-BETA'
-ALGORITHM='1-STEP-LOOKAHEAD'
-#ALGORITHM='HUMAN'
-#ALGORITHM='LOCAL_LLM'
-#ALGORITHM='CLOUD_AGENT'
-#ALGORITHM='RANDOM_MOVE'
+#ALGORITHM_A='ALPHA-BETA'
+ALGORITHM_A='ENGINE'
+#ALGORITHM_B='1-STEP-LOOKAHEAD'
+#ALGORITHM_B='HUMAN'
+#ALGORITHM_B='LOCAL_LLM'
+#ALGORITHM_B='CLOUD_AGENT'
+#ALGORITHM_B='RANDOM_MOVE'
 
-CURRICULAR_SPEED=2000## AS the model learns, reduce the speed.
-HANDICAP_FACTOR=1000
+CURRICULAR_SPEED=200## AS the model learns, reduce the speed.
+HANDICAP_FACTOR=1
 MAX_TURNS_PER_GAME=200
 GIVES_CHECK_HEURISTIC=0.90
 TEMPERATURE=0.5
@@ -399,7 +402,9 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
     board = chess.Board()
     engine = chess.engine.SimpleEngine.popen_uci("/opt/homebrew/bin/stockfish")
     global all_scores
-    algorithm=ALGORITHM
+
+    algorithm_b=ALGORITHM_B
+    algorithm=ALGORITHM_A
     
     #plt.ion() 
     #plt.plot([0])
@@ -458,6 +463,11 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
                         next_move_2 = input("Human RaVEN move: ")
                         move = board.parse_san(next_move_2)
 
+                    elif algorithm == 'ENGINE':
+                        result = engine.play(board, chess.engine.Limit(time=raven_time_left / 100)) # Adjust engine thinking time
+                        next_move_2 = result.move
+                        move=result.move
+
 
                     elif algorithm == 'CLOUD_AGENT':
                         messages.append({"role": "user", "content": str(legal_moves_list)})
@@ -485,7 +495,7 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
 
                     elif algorithm == 'ALPHA-BETA':
                         #next_move_2 = alpha_beta_search(board, depth=4)
-                        next_move_2, s2 = find_best_move(board,depth=5)
+                        next_move_2, s2 = find_best_move(board,depth=6)
                         move=next_move_2
 
 
@@ -523,11 +533,21 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
         else:
             # Engine's turn
             start_time = time.time()
-            result = engine.play(board, chess.engine.Limit(time=engine_time_left / 100)) # Adjust engine thinking time
-            board.push(result.move)
+            
+            if algorithm_b == 'ENGINE':
+                result = engine.play(board, chess.engine.Limit(time=engine_time_left / 100)) # Adjust engine thinking time
+                next_move_2 = result.move
+                board.push(result.move)
+
+            if algorithm_b == 'HUMAN':
+                next_move_2 = input("Human ENBINE move: ")
+                move = board.parse_san(next_move_2)
+                board.push(move)
+            
             end_time = time.time()
             engine_time_left -= (end_time - start_time)
-            print(f"Engine played: {result.move}")
+
+            print(f"Engine played: {next_move_2} with algorithm {algorithm_b}")
             if engine_time_left <= 0:
                 print("Engine loses on time!")
                 break
