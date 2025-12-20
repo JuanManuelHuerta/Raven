@@ -32,7 +32,7 @@ NUM_GAMES=10
 #------------------------------------------------------------
 PATH_TO_OPENINGS = "data/polyglot/komodo.bin"
 USE_OPENINGS = True
-when_to_use_openings = set(["1-STEP-LOOKAHEAD","ALPHA-BETA"])
+when_to_use_openings = set(["N-STEP-LOOKAHEAD","ALPHA-BETA"])
 
 #PLAY_HUMAN=False
 #USE_LOCAL_LLM=True
@@ -43,9 +43,9 @@ ALGORITHM_B='ENGINE'
 #ALGORITHM_B='HUMAN'
 
 #ALGORITHM_A='ALPHA-BETA'
-ALGORITHM_A='RANDOM'
+#ALGORITHM_A='RANDOM'
 #ALGORITHM_A='ENGINE'
-#ALGORITHM_A='1-STEP-LOOKAHEAD'
+ALGORITHM_A='N-STEP-LOOKAHEAD'
 #ALGORITHM_A='HUMAN'
 #ALGORITHM_A='LOCAL_LLM'
 #ALGORITHM_A='CLOUD_AGENT'
@@ -53,9 +53,10 @@ ALGORITHM_A='RANDOM'
 
 CURRICULAR_SPEED=2000.    ## As the model learns, reduce the speed.
 MAX_SECS_FOR_ENGINE=0.5  ## Cap the engine's time
-ALPHA_BETA_DEPTH=6
+ALPHA_BETA_DEPTH=5
 HANDICAP_FACTOR=100
 MAX_TURNS_PER_GAME=200
+N_STEP_LOOKAHEAD=20
 GIVES_CHECK_HEURISTIC=0.90
 TEMPERATURE=0.5
 
@@ -149,6 +150,61 @@ chess.KING :  [
 
 }
 
+
+
+def quiescence(board, alpha, beta):
+    """Search only captures to avoid horizon effect"""
+    stand_pat = evaluate(board)
+    
+    if stand_pat >= beta:
+        return beta
+    if stand_pat > alpha:
+        alpha = stand_pat
+    
+    for move in order_moves(board):
+        if not board.is_capture(move):
+            continue
+            
+        board.push(move)
+        score = -quiescence(board, -beta, -alpha)
+        board.pop()
+        
+        if score >= beta:
+            return beta
+        if score > alpha:
+            alpha = score
+    
+    return alpha
+
+
+def order_moves(board):
+    """Order moves for better pruning"""
+    moves = list(board.legal_moves)
+    scored = []
+    
+    for move in moves:
+        score = 0
+        # Captures first (with MVV-LVA)
+        if board.is_capture(move):
+            captured = board.piece_at(move.to_square)
+            attacker = board.piece_at(move.from_square)
+            if captured and attacker:
+                # Most Valuable Victim - Least Valuable Attacker
+                piece_values = {1: 100, 2: 320, 3: 330, 4: 500, 5: 900, 6: 0}
+                score = 10 * piece_values[captured.piece_type] - piece_values[attacker.piece_type]
+        
+        # Checks
+        board.push(move)
+        if board.is_check():
+            score += 50
+        board.pop()
+        
+        scored.append((score, move))
+    
+    scored.sort(reverse=True, key=lambda x: x[0])
+    return [move for _, move in scored]
+
+
 def evaluate(board):
     """Evaluates a board from the WHITE perspective based on basic materiel and position."""
 
@@ -218,15 +274,23 @@ def alphabeta(board, depth, alpha, beta, maximizing_player):
     Returns:
         The heuristic value of the position
     """
+    '''
     # Terminal condition: depth reached or game over
     if depth == 0 or board.is_game_over():
         return evaluate(board)
         #info = engine.analyse(board, chess.engine.Limit(depth=20))
         #this_score=info['score'].white().score()
+    '''
+
+    if board.is_game_over():
+        return evaluate(board)
+    if depth == 0:
+        return quiescence(board, alpha, beta)
     
     if maximizing_player:
         value = float('-inf')
-        for move in board.legal_moves:
+        #for move in board.legal_moves:
+        for move in order_moves(board):
             board.push(move)
             value = max(value, alphabeta(board, depth - 1, alpha, beta, False))
             board.pop()
@@ -237,7 +301,8 @@ def alphabeta(board, depth, alpha, beta, maximizing_player):
         return value
     else:
         value = float('inf')
-        for move in board.legal_moves:
+        #for move in board.legal_moves:
+        for move in order_moves(board):
             board.push(move)
             value = min(value, alphabeta(board, depth - 1, alpha, beta, True))
             board.pop()
@@ -263,8 +328,8 @@ def find_best_move(board, depth):
     best_value = float('-inf') if board.turn == chess.WHITE else float('inf')
     alpha = float('-inf')
     beta = float('inf')
-    
-    for move in board.legal_moves:
+    moves = list(board.legal_moves)  # Generate once
+    for move in moves:
         board.push(move)
         
         if board.turn == chess.BLACK:  # We just made a white move
@@ -411,7 +476,7 @@ def chess_agent(board,engine,a: list) -> str:
         
         move = chess.Move.from_uci(i)
         board.push(move)
-        info = engine.analyse(board, chess.engine.Limit(depth=20))
+        info = engine.analyse(board, chess.engine.Limit(depth=N_STEP_LOOKAHEAD))
         this_score=info['score'].white().score()
         try:
             counterfactual_score=math.exp(this_score/TEMPERATURE)
@@ -528,7 +593,7 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
                     pick_random=None
                     
                     if algorithm == 'RANDOM':
-                        pick_random=random.choice(['HUMAN','ENGINE','1-STEP-LOOKAHEAD'])
+                        pick_random=random.choice(['HUMAN','ENGINE','N-STEP-LOOKAHEAD'])
 
 
 
@@ -576,7 +641,7 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
                         move=next_move_2
 
 
-                    elif algorithm == '1-STEP-LOOKAHEAD' or pick_random=='1-STEP-LOOKAHEAD':
+                    elif algorithm == 'N-STEP-LOOKAHEAD' or pick_random=='N-STEP-LOOKAHEAD':
                         next_move_2=chess_agent(board,engine,legal_moves_list)
                         move = board.parse_san(next_move_2)
                     
