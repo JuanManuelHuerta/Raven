@@ -175,10 +175,18 @@ def evaluate(board):
     }
     
     for square_index, piece in board.piece_map().items():
+        rank = chess.square_rank(square_index)
+        file = chess.square_file(square_index)
+
+    # Flip board for black pieces
+        if piece.color == chess.BLACK:
+            rank = 7 - rank
+
         value = piece_values[piece.piece_type]
         #square_index = chess.parse_square(square) 
         
-        positional_value = piece_square_table[piece.piece_type][chess.square_file(square_index)][chess.square_rank(square_index)]
+        #positional_value = piece_square_table[piece.piece_type][chess.square_file(square_index)][chess.square_rank(square_index)]
+        positional_value = piece_square_table[piece.piece_type][rank][file]
         if piece.color == chess.WHITE:
             score += (value + positional_value)
         else:
@@ -522,8 +530,8 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
                     if algorithm == 'RANDOM':
                         pick_random=random.choice(['HUMAN','ENGINE','1-STEP-LOOKAHEAD'])
 
-                    
-                        
+
+
                     if algorithm == 'HUMAN' or pick_random=='HUMAN':
                         next_move_2 = input("Human RaVEN move: ")
                         move = board.parse_san(next_move_2)
