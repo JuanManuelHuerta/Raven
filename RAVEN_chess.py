@@ -39,10 +39,11 @@ when_to_use_openings = set(["1-STEP-LOOKAHEAD","ALPHA-BETA"])
 #PURE_LLM=False
 
 
-#ALGORITHM_B='ENGINE'
-ALGORITHM_B='HUMAN'
+ALGORITHM_B='ENGINE'
+#ALGORITHM_B='HUMAN'
 
-ALGORITHM_A='ALPHA-BETA'
+#ALGORITHM_A='ALPHA-BETA'
+ALGORITHM_A='RANDOM'
 #ALGORITHM_A='ENGINE'
 #ALGORITHM_A='1-STEP-LOOKAHEAD'
 #ALGORITHM_A='HUMAN'
@@ -50,10 +51,10 @@ ALGORITHM_A='ALPHA-BETA'
 #ALGORITHM_A='CLOUD_AGENT'
 #ALGORITHM_A='RANDOM_MOVE'
 
-CURRICULAR_SPEED=200.    ## As the model learns, reduce the speed.
+CURRICULAR_SPEED=2000.    ## As the model learns, reduce the speed.
 MAX_SECS_FOR_ENGINE=0.5  ## Cap the engine's time
-ALPHA_BETA_DEPTH=3
-HANDICAP_FACTOR=1
+ALPHA_BETA_DEPTH=6
+HANDICAP_FACTOR=100
 MAX_TURNS_PER_GAME=200
 GIVES_CHECK_HEURISTIC=0.90
 TEMPERATURE=0.5
@@ -516,11 +517,18 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
                     print("Legal moves:",legal_moves_list)
                     print(f"ALGORITHM {algorithm}")
 
-                    if algorithm == 'HUMAN':
+                    pick_random=None
+                    
+                    if algorithm == 'RANDOM':
+                        pick_random=random.choice(['HUMAN','ENGINE','1-STEP-LOOKAHEAD'])
+
+                    
+                        
+                    if algorithm == 'HUMAN' or pick_random=='HUMAN':
                         next_move_2 = input("Human RaVEN move: ")
                         move = board.parse_san(next_move_2)
 
-                    elif algorithm == 'ENGINE':
+                    elif algorithm == 'ENGINE' or pick_random=='ENGINE':
                         move_time=min(raven_time_left/100,MAX_SECS_FOR_ENGINE)
                         result = engine.play(board, chess.engine.Limit(move_time)) # Adjust engine thinking time
                         next_move_2 = result.move
@@ -560,7 +568,7 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
                         move=next_move_2
 
 
-                    elif algorithm == '1-STEP-LOOKAHEAD':
+                    elif algorithm == '1-STEP-LOOKAHEAD' or pick_random=='1-STEP-LOOKAHEAD':
                         next_move_2=chess_agent(board,engine,legal_moves_list)
                         move = board.parse_san(next_move_2)
                     
@@ -569,7 +577,10 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
                         next_move_2=random.choice(legal_moves_list)
                         move = board.parse_san(next_move_2)
 
-                    print(f"RaVEN {algorithm} Move: {next_move_2}")
+                    if algorithm == 'RANDOM':
+                        print(f"RaVEN {algorithm} (doing {pick_random}) Move: {next_move_2}")
+                    else:
+                        print(f"RaVEN {algorithm} Move: {next_move_2}")
                     
                     
                     if move in board.legal_moves:
@@ -623,12 +634,12 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
     else:
         text_result=str(board.result())
         print(text_result)
-        if text_result=="1-0":
-            result=1
+        if text_result=="0-1":
+            result=0
         elif text_result=="1/2-1/2":
             result=0.5
         else:
-            result=0
+            result=1.0  # Most likely a timeout for the blacks.
     engine.quit()
     return result
 
