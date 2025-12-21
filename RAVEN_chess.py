@@ -32,6 +32,7 @@ NUM_GAMES=10
 #------------------------------------------------------------
 PATH_TO_OPENINGS = "data/polyglot/komodo.bin"
 USE_OPENINGS = True
+#USE_OPENINGS = False
 when_to_use_openings = set(["N-STEP-LOOKAHEAD","ALPHA-BETA"])
 
 #PLAY_HUMAN=False
@@ -53,10 +54,10 @@ ALGORITHM_A='N-STEP-LOOKAHEAD'
 
 CURRICULAR_SPEED=2000.    ## As the model learns, reduce the speed.
 MAX_SECS_FOR_ENGINE=0.5  ## Cap the engine's time
-ALPHA_BETA_DEPTH=5
+ALPHA_BETA_DEPTH=3
 HANDICAP_FACTOR=100
 MAX_TURNS_PER_GAME=200
-N_STEP_LOOKAHEAD=20
+N_STEP_LOOKAHEAD=18
 GIVES_CHECK_HEURISTIC=0.90
 TEMPERATURE=0.5
 
@@ -205,6 +206,72 @@ def order_moves(board):
     return [move for _, move in scored]
 
 
+
+transposition_table = {}
+
+def alphabeta_with_tt(board, depth, alpha, beta, maximizing_player):
+    # Check transposition table
+    board_hash = chess.polyglot.zobrist_hash(board)
+    if board_hash in transposition_table:
+        stored_depth, stored_value, stored_flag = transposition_table[board_hash]
+        if stored_depth >= depth:
+            if stored_flag == 'exact':
+                return stored_value
+            elif stored_flag == 'lowerbound':
+                alpha = max(alpha, stored_value)
+            elif stored_flag == 'upperbound':
+                beta = min(beta, stored_value)
+            if alpha >= beta:
+                return stored_value
+    
+    # ... rest of alphabeta logic ...
+    
+
+    if board.is_game_over():
+        return evaluate(board)
+    if depth == 0:
+        return quiescence(board, alpha, beta)
+    
+    if maximizing_player:
+        value = float('-inf')
+        #for move in board.legal_moves:
+        for move in order_moves(board):
+            board.push(move)
+            value = max(value, alphabeta(board, depth - 1, alpha, beta, False))
+            board.pop()
+            
+            if value >= beta:
+                break  # Beta cutoff
+            alpha = max(alpha, value)
+    #    return value
+    else:
+        value = float('inf')
+        #for move in board.legal_moves:
+        for move in order_moves(board):
+            board.push(move)
+            value = min(value, alphabeta(board, depth - 1, alpha, beta, True))
+            board.pop()
+            
+            if value <= alpha:
+                break  # Alpha cutoff
+            beta = min(beta, value)
+    #    return value
+
+
+
+
+    # Store in transposition table
+    if value <= alpha:
+        flag = 'upperbound'
+    elif value >= beta:
+        flag = 'lowerbound'
+    else:
+        flag = 'exact'
+    transposition_table[board_hash] = (depth, value, flag)
+    
+    return value
+
+
 def evaluate(board):
     """Evaluates a board from the WHITE perspective based on basic materiel and position."""
 
@@ -334,12 +401,14 @@ def find_best_move(board, depth):
         
         if board.turn == chess.BLACK:  # We just made a white move
             value = alphabeta(board, depth - 1, alpha, beta, False)
+            #value = alphabeta_with_tt(board, depth - 1, alpha, beta, False)
             if value > best_value:
                 best_value = value
                 best_move = move
             alpha = max(alpha, value)
         else:  # We just made a black move
             value = alphabeta(board, depth - 1, alpha, beta, True)
+            #value = alphabeta_with_tt(board, depth - 1, alpha, beta, True)
             if value < best_value:
                 best_value = value
                 best_move = move
@@ -393,10 +462,11 @@ def play_with_book(board, depth, book_path):
     if book_move:
         print("!!!!!!!!!!!!!!!!!!!!!  DOING BOOK MOVE !!!!!!!!!!!!!!!!!!!!!!!!!!")
         return book_move, "book"
-    
+    else:
+        return -1, "book"
     # If not in book, use alpha-beta search
-    best_move, _ = find_best_move(board, depth)
-    return best_move, "search"
+    #best_move, _ = find_best_move(board, depth)
+    #return best_move, "search"
 
 '''
 def alpha_beta_search(board, depth):
@@ -529,6 +599,8 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
         engine_path (str): The path to the UCI-compatible chess engine executable.
         time_per_player_seconds (int): The initial time in seconds for each player.
     """
+    global transposition_table
+
     question = "Pick a move at random. I will keep updating the options. Just pick one."
     board = chess.Board()
     engine = chess.engine.SimpleEngine.popen_uci("/opt/homebrew/bin/stockfish")
@@ -567,6 +639,9 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
         print("\n" + "=" * 30)
         print(board)
         print(f"RaVEN Time Left: {raven_time_left:.1f}s | Engine Time Left: {engine_time_left:.1f}s")
+
+        transposition_table={}
+
 
         if board.turn == chess.WHITE:
             # RaVEN's turn
@@ -636,15 +711,29 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
                         #next_move_2 = alpha_beta_search(board, depth=4)
                         if USE_OPENINGS:
                             next_move_2, s2 = play_with_book(board,depth=ALPHA_BETA_DEPTH,book_path=PATH_TO_OPENINGS)
+                            if next_move_2 == -1:
+                                next_move_2, s2 = find_best_move(board,depth=ALPHA_BETA_DEPTH)
                         else:
                             next_move_2, s2 = find_best_move(board,depth=ALPHA_BETA_DEPTH)
                         move=next_move_2
 
 
                     elif algorithm == 'N-STEP-LOOKAHEAD' or pick_random=='N-STEP-LOOKAHEAD':
-                        next_move_2=chess_agent(board,engine,legal_moves_list)
-                        move = board.parse_san(next_move_2)
-                    
+                       # next_move_2=chess_agent(board,engine,legal_moves_list)
+                       # move = board.parse_san(next_move_2)
+                        if USE_OPENINGS:
+                            next_move_2, s2 = play_with_book(board,depth=ALPHA_BETA_DEPTH,book_path=PATH_TO_OPENINGS)
+                            move=next_move_2
+                            if next_move_2 == -1:
+                                next_move_2=chess_agent(board,engine,legal_moves_list)
+                                move = board.parse_san(next_move_2)
+                        else:
+                            #next_move_2, s2 = find_best_move(board,depth=ALPHA_BETA_DEPTH)
+                            next_move_2=chess_agent(board,engine,legal_moves_list)
+                            move = board.parse_san(next_move_2)
+                        
+
+
 
                     else:
                         next_move_2=random.choice(legal_moves_list)
@@ -682,7 +771,9 @@ def play_timed_chess_match(engine_path, time_per_player_seconds=3):
             if algorithm_b == 'ENGINE':
 
                 move_time=min(raven_time_left/100,MAX_SECS_FOR_ENGINE)
-                result = engine.play(board, chess.engine.Limit(move_time)) # Adjust engine thinking time
+                #result = engine.play(board, chess.engine.Limit(move_time)) # Adjust engine thinking time
+                result = engine.play(board, chess.engine.Limit(depth=4)) # Adjust engine thinking time
+                #chess.engine.Limit(depth=20)
                 next_move_2 = result.move
                 board.push(result.move)
 
