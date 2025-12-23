@@ -3,7 +3,7 @@
 ## Algorithm implementations
 
 1. ALPHA-BETA
-2. 1-STEP-LOOKAHEAD: Greedy Search
+2. N-STEP-LOOKAHEAD: Greedy Search
 3. HUMAN
 4. LOCAL_LLM
 5. CLOUD_AGENT
@@ -18,6 +18,11 @@ Supports Polyglot book openings (using Komodo book).
 1. Openings
 2. Midgame
 3. Closing
+
+
+## Optimizations
+
+1. Transposition tables (TODO)
 
 
 
@@ -69,6 +74,11 @@ Here are some notes on the 2 key applications:
 2. Timed Chess: Gets the move from oponent, thinks and makes a move. Thinks while the oponent is thinking.
     https://github.com/LeelaChessZero/lc0/wiki/Getting-Started
 
+
+
+## Other directions
+
+Sunfish is a simple codebase https://github.com/thomasahle/sunfish/blob/master/sunfish.py
 
 
 
